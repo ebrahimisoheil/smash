@@ -20,6 +20,8 @@ pub fn core_crate_placeholder() -> &'static str {
     "smash-contracts"
 }
 
+pub mod phase_c;
+
 /// Stable machine-readable application error codes. The HTTP mapping belongs
 /// to the API adapter; this enum is transport-independent.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

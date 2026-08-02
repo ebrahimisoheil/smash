@@ -5864,6 +5864,7 @@ dependencies = [
  "async-trait",
  "aws-sdk-s3",
  "lancedb",
+ "serde_json",
  "smash-contracts",
  "smash-core",
  "sqlx",

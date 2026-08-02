@@ -28,6 +28,27 @@
         }
       }
     },
+    "/v1/processing-states": {
+      "get": {
+        "tags": [],
+        "operationId": "processing_states",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ProcessingState"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/version": {
       "get": {
         "tags": [],
@@ -63,6 +84,42 @@
             "type": "string"
           }
         }
+      },
+      "ProcessingState": {
+        "type": "object",
+        "required": [
+          "state",
+          "terminal",
+          "actionable"
+        ],
+        "properties": {
+          "actionable": {
+            "type": "boolean"
+          },
+          "state": {
+            "$ref": "#/components/schemas/SourceState"
+          },
+          "terminal": {
+            "type": "boolean"
+          }
+        }
+      },
+      "SourceState": {
+        "type": "string",
+        "enum": [
+          "uploaded",
+          "verified",
+          "queued",
+          "extracting",
+          "chunking",
+          "indexing",
+          "proposing",
+          "ready",
+          "partially_ready",
+          "failed",
+          "quarantined",
+          "deleted"
+        ]
       },
       "VersionResponse": {
         "type": "object",

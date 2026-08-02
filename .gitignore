@@ -97,3 +97,9 @@ V2/**/target/
 V2/apps/web/node_modules/
 V2/apps/web/.next/
 V2/apps/web/next-env.d.ts
+
+# Root Rust workspace build artifacts
+target/
+
+# Local Phase B/C evidence and backup artifacts
+var/
