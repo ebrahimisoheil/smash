@@ -1,0 +1,6 @@
+# Reasonable defaults for a fresh workspace. Tightened as Phase B+ introduces
+# real business logic (e.g. cognitive-complexity thresholds, disallowed
+# panicking methods in `api`/`core` handlers).
+msrv = "1.90"
+too-many-arguments-threshold = 8
+type-complexity-threshold = 250

@@ -1,0 +1,14 @@
+[package]
+name = "smash-storage"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "SQLx, MinIO (S3), and LanceDB adapters implementing core's ports."
+
+[dependencies]
+aws-sdk-s3 = { version = "1.122.0", default-features = false, features = ["rt-tokio", "http-1x", "sigv4a", "default-https-client"] }
+lancedb = "0.26.2"
+smash-core = { path = "../core" }
+sqlx = { version = "0.8.6", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "uuid", "time", "migrate", "json"] }

@@ -87,3 +87,13 @@ docs/media/.aha-demo/
 
 # SmashBar build artifacts (never commit)
 apps/SmashBar/.build/
+
+# V2 Rust workspace build artifacts (Cargo.lock IS committed — only the
+# compiled output isn't)
+V2/target/
+V2/**/target/
+
+# V2 Next.js placeholder build artifacts
+V2/apps/web/node_modules/
+V2/apps/web/.next/
+V2/apps/web/next-env.d.ts
