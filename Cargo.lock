@@ -5861,10 +5861,14 @@ dependencies = [
 name = "smash-storage"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "aws-sdk-s3",
  "lancedb",
+ "smash-contracts",
  "smash-core",
  "sqlx",
+ "tokio",
+ "uuid",
 ]
 
 [[package]]

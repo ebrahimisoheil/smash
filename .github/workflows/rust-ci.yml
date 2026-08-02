@@ -120,6 +120,9 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Install protobuf compiler
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
       - name: Install pinned Rust toolchain
         uses: dtolnay/rust-toolchain@master
         with:

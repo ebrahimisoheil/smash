@@ -17,7 +17,24 @@ Implement the slim MCP adapter over the application core:
 - structured errors;
 - agent-session attribution.
 
-Preserve the official Registry identity and release metadata.
+Support governed long-running agent control: status, progress, checkpoint,
+pause, resume, cancel, and selective capture. A process must be inspectable
+and recoverable without exposing raw storage concepts.
+
+Define and test the session hooks: pre-hook recall is non-mutating and bounded;
+post-hook capture is selective, proposal-first, and never a transcript sink.
+The hook tests must cover casual turns, explicit save requests, user
+corrections, duplicate suppression, conflict proposals, and session-end
+capture.
+
+The MCP adapter must also support conversational approval for high-impact
+mutations and offer “review in UI” for deferred or complex review. Both routes
+must use the same admission operation; neither may bypass Rules or
+authorization.
+
+Registry and GitHub.io publication are release work, not runtime dependencies.
+Prepare the exact-release `server.json`, package metadata, installation page,
+checksums, clean-install smoke test, and rollback procedure for Phase J.
 
 ### Skills and prompts
 
@@ -35,8 +52,14 @@ Use MCP ingestion where it is sufficient, **but do not force background connecto
 - [ ] Session-end capture creates **Proposals only**.
 - [ ] MCP tools cannot bypass authorization or Rules.
 - [ ] Connector updates create Source versions without duplication.
-- [ ] Registry metadata is reproducible from a release.
+- [ ] Pre-hook recall and selective post-hook proposal behavior pass the agent UX tests.
+- [ ] Rule/Harness activation, forgetting, and consequential Memory decisions ask for conversational confirmation or explicitly route to UI review.
+- [ ] Registry metadata and GitHub.io installation instructions are reproducible from a release.
+- [ ] A clean install from GitHub.io completes the full session loop.
 - [ ] The MCP surface remains small enough for reliable tool selection.
+- [ ] A long-running agent resumes from a durable checkpoint, reports progress,
+  and creates selective Proposals without silently writing every turn to
+  Memory.
 
 ## References
 

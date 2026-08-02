@@ -19,6 +19,12 @@ Implement:
 - progress;
 - cancellation semantics.
 
+The same infrastructure supports long-running agent processes: durable
+checkpoints, safe retry and lease reclamation, progress updates, cancellation,
+and explicit failure state. The worker may retain process evidence and
+intermediate artifacts, but durable Memory activation belongs to later
+governance phases.
+
 ### Narrow, dependable Source set first
 
 - text / Markdown;
@@ -40,6 +46,8 @@ Surface processing state in API and UI. **Quarantine unsafe or unreadable inputs
 - [ ] Changing a processor produces a new derived version **without changing original bytes**.
 - [ ] Parser failures and suspicious files are visible and recoverable.
 - [ ] **No processor activates durable Memory.**
+- [ ] Long-running work resumes from a durable checkpoint and never silently
+  converts execution observations into active Memory.
 
 ## References
 

@@ -32,7 +32,7 @@ It is derived from [`SMASH_V2.md`](../../../SMASH_V2.md) at the repository root,
 | [09 — Retrieval architecture](09-retrieval-architecture.md) | Light search, Aggressive search, Cross-Map retrieval, ranking evaluation |
 | [10 — Rules and harness enforcement](10-rules-harness.md) | Evaluation points, effects, precedence, rule test harness |
 | [11 — Agent session contract](11-agent-session-contract.md) | The portable agent loop |
-| [12 — MCP, skills, prompts, connectors](12-mcp-skills-prompts-connectors.md) | MCP server and consumer, Registry, skills, prompts, native connectors |
+| [12 — MCP, skills, prompts, connectors](12-mcp-skills-prompts-connectors.md) | MCP server, agent hooks, selective writes, release publication, skills, prompts, native connectors |
 | [13 — API principles](13-api-principles.md) | Versioning, commands vs queries, uploads, OpenAPI |
 | [14 — Web application requirements](14-web-application.md) | Home, Areas, Library, Review, saved record, search, mobile |
 | [15 — Authentication, authorization, security](15-auth-security.md) | Authorization model, threat list, release security gates |

@@ -28,6 +28,11 @@ Decision graph: [23 — Diagrams §24.6](23-diagrams.md#246-memory-proposal-and-
 
 **Semantic duplicates require review** unless a strict deterministic rule applies.
 
+Review may be completed conversationally or in the UI through the shared
+admission operation. Conversational confirmation is required for forgetting,
+material supersession, sensitive or consequential Memory, and other durable
+changes whose impact the user should see before activation.
+
 **Contradictions must never coexist silently as equally active truth.** They create a conflict Review item with side-by-side evidence and applicability.
 
 ## Supersession
