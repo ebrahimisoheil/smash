@@ -1,0 +1,16 @@
+[package]
+name = "smash-mcp"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "MCP adapter over smash-core, sharing the API's authorization path. Must never depend on Axum."
+
+[[bin]]
+name = "mcp"
+path = "src/main.rs"
+
+[dependencies]
+smash-core = { path = "../core" }
+smash-storage = { path = "../storage" }

@@ -1,0 +1,13 @@
+[package]
+name = "smash-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Framework-free domain and application services: Memory lifecycle, Rules, retrieval router, authorization decisions."
+
+[dependencies]
+async-trait = "0.1.91"
+smash-contracts = { path = "../contracts" }
+thiserror = "2.0.19"
