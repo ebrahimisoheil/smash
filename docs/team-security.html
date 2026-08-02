@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="How engineering teams can evaluate Smash: local deployment, data boundaries, review gates, Git sharing, audit exports, and operational checks.">
+  <title>Smash - Team Security Review</title>
+  <Smash rel="stylesheet" href="assets/site.css">
+  <Smash rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <Smash rel="apple-touch-icon" href="assets/logo-512.png">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Smash">
+  <meta property="og:image" content="assets/logo-512.png">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:image" content="assets/logo-512.png">
+  <script src="assets/site.js" defer></script>
+</head>
+<body>
+  <nav class="site-nav" aria-label="Main">
+    <a class="brand" href="index.html"><img src="assets/logo.svg" alt="">Smash</a>
+    <div class="nav-links">
+      <a href="getting-started.html">Start</a>
+      <a href="why-smash.html">Why</a>
+      <a href="scale.html">Scale</a>
+      <a href="ui.html">UI</a>
+      <a href="concepts.html">Concepts</a>
+      <a href="memory-contract.html">Contract</a>
+      <a href="cli.html">CLI</a>
+      <a href="skills.html">Skills</a>
+      <a href="api.html">API</a>
+      <a href="security.html">Security</a>
+      <a href="contributing.html">Contribute</a>
+    </div>
+  </nav>
+
+  <header class="page-hero">
+    <div class="hero-inner">
+      <span class="eyebrow">Team review</span>
+      <h1>Local agent memory without a new cloud data boundary.</h1>
+      <p>A practical checklist for engineering leads and security reviewers evaluating Smash for a small team, repo, or design partner pilot.</p>
+    </div>
+  </header>
+
+  <main class="doc-section">
+    <div class="section-inner doc-grid">
+      <aside class="toc">
+        <strong>On this page</strong>
+        <a href="#deployment">Deployment model</a>
+        <a href="#data">Data boundaries</a>
+        <a href="#review">Memory approval</a>
+        <a href="#share">Team sharing</a>
+        <a href="#audit">Audit packet</a>
+        <a href="#limits">Current limits</a>
+        <a href="#checklist">Review checklist</a>
+      </aside>
+      <article class="doc-content">
+        <h2 id="deployment">Deployment Model</h2>
+        <p>Smash is designed as a local personal or repo-local memory layer. Each developer runs the CLI, optional skills, and MCP server on their own machine. The web viewer is optional and only serves the local UI.</p>
+        <div class="callout">
+          <strong>No server dependency</strong>
+          <code>smash serve</code> is only the human web viewer. CLI, skills, and MCP access work directly against local Markdown files when the viewer is closed.
+        </div>
+        <pre><code>brew install ebrahimisoheil/smash/Smash
+smash init ~/Smash
+smash health ~/Smash
+smash connect codex ~/Smash</code></pre>
+
+        <h2 id="data">Data Boundaries</h2>
+        <ul>
+          <li><code>raw/</code> contains private source material and is gitignored by default.</li>
+          <li><code>wiki/</code> contains structured Markdown pages, memories, logs, and backlinks.</li>
+          <li><code>smash-mcp</code> talks over stdio to the local agent client. It does not require <code>serve.py</code>.</li>
+          <li>The installed product has no telemetry, hosted backend, or outbound API calls.</li>
+          <li>Secret-looking values are scanned before capture, ingest, Obsidian import, and doctor checks.</li>
+        </ul>
+        <pre><code>smash ingest-status ~/Smash
+smash doctor ~/Smash
+smash validate ~/Smash</code></pre>
+
+        <h2 id="review">Memory Approval Gates</h2>
+        <p>Agents can propose memories, but durable memory should be explicit and reviewable. Smash keeps memory as Markdown with type, scope, visibility, project, source, review status, optional review dates, and optional expiry dates.</p>
+        <pre><code>smash propose-memories raw/notes.md ~/Smash
+smash memory-inbox ~/Smash
+smash review-memory memory-name ~/Smash
+smash archive-memory memory-name ~/Smash --reason stale</code></pre>
+        <p>For temporary context, use <code>expires_at</code>. For decisions that should be re-confirmed, use <code>review_after</code>. For team handoff, keep personal context at <code>visibility: private</code> and only mark memories <code>project</code> or <code>team</code> after the user explicitly approves sharing them.</p>
+
+        <h2 id="share">Team Sharing Pattern</h2>
+        <p>The safest early team workflow is Git-backed sharing of reviewed wiki pages. Keep raw sources local unless the team explicitly decides to share them.</p>
+        <pre><code>smash team-sync ~/Smash --remote git@example.com:team/smash-memory.git
+smash compliance-export ~/Smash --output Smash-audit.json
+smash backup ~/Smash</code></pre>
+        <p><code>smash team-sync</code> is read-only. It checks Git state, raw-source protection, review readiness, and whether active <code>visibility: private</code> memories would be swept into a broad <code>git add wiki</code>. It prints paste-safe commands instead of pushing data for you. The generated Git plan keeps <code>wiki/log.md</code> local because each machine has its own tamper-evident audit chain; sharing merged logs would create false integrity alarms.</p>
+
+        <h2 id="audit">Audit Packet</h2>
+        <p><code>smash compliance-export</code> creates a redacted JSON packet for review. It includes readiness, validation status, memory review counts, operation markers, recent audit log metadata, and safe next actions. Raw source contents and memory bodies are excluded.</p>
+        <pre><code>smash compliance-export ~/Smash --output Smash-audit.json
+smash wins ~/Smash
+smash memory-log ~/Smash</code></pre>
+
+        <h2 id="limits">Current Limits</h2>
+        <ul>
+          <li>Smash is local-first and single-user by default. It is not an SSO-backed team server.</li>
+          <li>The local web viewer has no authentication and should not be exposed beyond loopback.</li>
+          <li>Git sharing is intentionally manual so teams see exactly what is being committed.</li>
+          <li>Access control is currently based on local files, project filters, and review workflow, not centralized RBAC.</li>
+        </ul>
+
+        <h2 id="checklist">Security Review Checklist</h2>
+        <ol>
+          <li>Run <code>smash health ~/Smash</code> and verify readiness is green.</li>
+          <li>Run <code>smash doctor ~/Smash</code> and resolve secret or validation warnings.</li>
+          <li>Run <code>smash compliance-export ~/Smash --output Smash-audit.json</code>.</li>
+          <li>Confirm <code>raw/</code>, backups, caches, local MCP Python markers, and <code>wiki/log.md</code> are ignored by Git.</li>
+          <li>Review local <code>wiki/log.md</code>, <code>smash memory-log ~/Smash</code>, and <code>smash wins ~/Smash</code> before sharing the reviewed wiki pages.</li>
+          <li>Only share reviewed <code>wiki/</code> pages whose memories are marked <code>visibility: project</code> or <code>visibility: team</code>.</li>
+        </ol>
+      </article>
+    </div>
+  </main>
+
+  <footer>
+    <div class="section-inner"><a href="security.html">Security model</a> · <a href="cli.html">CLI reference</a>.</div>
+    <p class="analytics-note">The installed Smash product has no telemetry. This public docs site may use lightweight analytics to understand install interest.</p>
+  </footer>
+</body>
+</html>

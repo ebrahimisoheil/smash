@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Smash security model: local-first storage, secret scanning, backups, HTTP safety boundaries, and release hygiene.">
+  <title>Smash - Security</title>
+  <Smash rel="stylesheet" href="assets/site.css">
+  <Smash rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <Smash rel="apple-touch-icon" href="assets/logo-512.png">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Smash">
+  <meta property="og:image" content="assets/logo-512.png">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:image" content="assets/logo-512.png">
+  <script src="assets/site.js" defer></script>
+</head>
+<body>
+  <nav class="site-nav" aria-label="Main">
+    <a class="brand" href="index.html"><img src="assets/logo.svg" alt="">Smash</a>
+    <div class="nav-links">
+      <a href="getting-started.html">Start</a>
+      <a href="why-smash.html">Why</a>
+      <a href="scale.html">Scale</a>
+      <a href="ui.html">UI</a>
+      <a href="concepts.html">Concepts</a>
+      <a href="memory-contract.html">Contract</a>
+      <a href="cli.html">CLI</a>
+      <a href="skills.html">Skills</a>
+      <a href="api.html">API</a>
+      <a href="security.html" aria-current="page">Security</a>
+      <a href="contributing.html">Contribute</a>
+    </div>
+  </nav>
+
+  <header class="page-hero">
+    <div class="hero-inner">
+      <span class="eyebrow">Local-first</span>
+      <h1>Your agent memory should belong to you.</h1>
+      <p>Smash has no hosted backend, no telemetry, no external API calls, and no cloud account requirement. The safety model is local files, explicit writes, and inspectable provenance.</p>
+    </div>
+  </header>
+
+  <main class="doc-section">
+    <div class="section-inner doc-grid">
+      <aside class="toc">
+        <strong>On this page</strong>
+        <a href="#privacy">Privacy model</a>
+        <a href="#secrets">Secret handling</a>
+        <a href="#http">HTTP boundary</a>
+        <a href="#backups">Backups</a>
+        <a href="#team">Team review</a>
+        <a href="#share">Before sharing</a>
+        <a href="#reporting">Reporting</a>
+      </aside>
+      <article class="doc-content">
+        <h2 id="privacy">Privacy Model</h2>
+        <ul>
+          <li>No telemetry in the installed CLI, MCP server, local web UI, or wiki runtime.</li>
+          <li>No hosted backend.</li>
+          <li>No external API calls from <code>serve.py</code> or <code>smash-mcp</code>.</li>
+          <li>Raw sources and generated wiki pages are ignored by git by default.</li>
+          <li>SQLite search, when available, is an in-memory derived index. Markdown remains the source of truth.</li>
+          <li>Optional semantic recall stays local: embedding models load offline-only at recall time (only the explicit <code>smash semantic --setup</code> may fetch a model, once), embeddings live in plain JSON under <code>.smash-cache/</code>, and CI blocks outbound network code in the runtime.</li>
+          <li>Automatic session hooks store proposal-only notes; no durable memory is written without explicit review, and transcript extraction skips tool calls and tool outputs.</li>
+        </ul>
+        <p>The public GitHub Pages documentation may use lightweight analytics to understand install interest. It does not run inside Smash, read local wiki data, or capture source/memory content.</p>
+
+        <h2 id="secrets">Secret Handling</h2>
+        <p>Smash scans raw sources, captures, wiki pages, release files, and public artifacts for secret-looking values. It detects common API keys, provider tokens, JWTs, private key blocks, and registry credentials, warns without logging secret values, and refuses normal ingest guidance when raw safety cannot be established. Validation and doctor checks also fail if a secret-looking value is already present in a wiki page before the local UI or MCP tools can serve it as context.</p>
+        <pre><code>smash ingest-status
+smash capture-inbox
+smash redact-capture raw/memory-captures/&lt;capture&gt;.md
+smash validate
+smash doctor
+python3 scripts/check_release_hygiene.py</code></pre>
+        <div class="callout">
+          <strong>Rule</strong>
+          Redact or remove secret-looking values locally before asking an agent to ingest a file. Smash is not a secret manager.
+        </div>
+
+        <h2 id="http">HTTP Boundary</h2>
+        <p>The local viewer binds to <code>127.0.0.1</code>, rejects unexpected host/bind flags and unexpected <code>Host</code> headers, and has no authentication. Do not expose it to the internet without adding an auth layer.</p>
+        <p>HTTP write actions require <code>X-Smash-Local-Action: true</code>. Responses include <code>X-Smash-API-Version</code>. Proposal analysis does not write pages.</p>
+
+        <h2 id="backups">Backups</h2>
+        <p><code>smash backup</code> and MCP <code>admin</code> action <code>backup</code> write local <code>.smash-backups/</code> archives. Raw sources are excluded unless explicitly requested.</p>
+        <pre><code>smash backup
+smash backup --include-raw
+smash doctor --fix</code></pre>
+        <p>Run a backup before broad repair work or large generated changes.</p>
+
+        <h2 id="team">Team Review</h2>
+        <p>For small teams, evaluate Smash as a local-first tool first: each developer runs their own CLI/MCP server, then reviewed <code>wiki/</code> pages can be shared through Git when the team explicitly wants shared memory.</p>
+        <p><a class="button" href="team-security.html">Open the team security checklist</a></p>
+
+        <h2 id="share">Before Sharing A Repo Or Wiki</h2>
+        <pre><code>python3 smash.py doctor
+python3 smash.py validate
+python3 scripts/check_release_hygiene.py
+git diff --check</code></pre>
+        <p>Use <code>git push</code>, <code>git archive</code>, or clean build artifacts for public sharing. Do not zip a whole working directory; ignored local files, <code>.git/</code>, caches, raw sources, and build outputs can be included by accident.</p>
+        <h2 id="reporting">Reporting Security Issues</h2>
+        <p>Use a private maintainer contact channel first. Do not post secrets, private wiki content, raw source files, or exploitable details in public GitHub issues. If a public issue is the only available path, keep it high level and ask for a private follow-up channel.</p>
+        <p>See <a href="../SECURITY.md">SECURITY.md</a> for the current reporting policy.</p>
+      </article>
+    </div>
+  </main>
+
+  <footer>
+    <div class="section-inner"><a href="getting-started.html">First 10 minutes</a> · <a href="troubleshooting.html">Troubleshooting</a>.</div>
+    <p class="analytics-note">The installed Smash product has no telemetry. This public docs site may use lightweight analytics to understand install interest.</p>
+  </footer>
+</body>
+</html>

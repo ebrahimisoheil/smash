@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Smash CLI reference for local agent memory, wiki maintenance, validation, backup, and MCP verification.">
+  <title>Smash - CLI Reference</title>
+  <Smash rel="stylesheet" href="assets/site.css">
+  <Smash rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <Smash rel="apple-touch-icon" href="assets/logo-512.png">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Smash">
+  <meta property="og:image" content="assets/logo-512.png">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:image" content="assets/logo-512.png">
+  <script src="assets/site.js" defer></script>
+</head>
+<body>
+  <nav class="site-nav" aria-label="Main">
+    <a class="brand" href="index.html"><img src="assets/logo.svg" alt="">Smash</a>
+    <div class="nav-links">
+      <a href="getting-started.html">Start</a>
+      <a href="why-smash.html">Why</a>
+      <a href="scale.html">Scale</a>
+      <a href="ui.html">UI</a>
+      <a href="concepts.html">Concepts</a>
+      <a href="memory-contract.html">Contract</a>
+      <a href="cli.html" aria-current="page">CLI</a>
+      <a href="skills.html">Skills</a>
+      <a href="api.html">API</a>
+      <a href="security.html">Security</a>
+      <a href="contributing.html">Contribute</a>
+    </div>
+  </nav>
+
+  <header class="page-hero">
+    <div class="hero-inner">
+      <span class="eyebrow">Command reference</span>
+      <h1>Local commands for daily memory work.</h1>
+      <p>Install the CLI with <code>brew install ebrahimisoheil/smash/Smash</code> on macOS, or use <code>smash &lt;command&gt;</code> after a global agent installer run. Smash uses <code>smash</code> because <code>Smash</code> is already a POSIX/macOS system utility. From a source checkout, use <code>python3 smash.py &lt;command&gt;</code> on macOS/Linux or <code>py smash.py &lt;command&gt;</code> on Windows.</p>
+    </div>
+  </header>
+
+  <main class="doc-section">
+    <div class="section-inner doc-grid">
+      <aside class="toc">
+        <strong>On this page</strong>
+        <a href="#tour">CLI tour</a>
+        <a href="#daily">Daily loop</a>
+        <a href="#memory">Memory commands</a>
+        <a href="#captures">Capture workflow</a>
+        <a href="#maintenance">Maintenance</a>
+        <a href="#all">All commands</a>
+      </aside>
+      <article class="doc-content">
+        <h2 id="tour">CLI Tour</h2>
+        <figure class="screenshot-card media-wide">
+          <img src="assets/smash-cli-tour.gif" alt="Animated tour of Smash CLI readiness, query, brief, and benchmark commands">
+          <figcaption>Status, query, brief, and benchmark are the core terminal loop.</figcaption>
+        </figure>
+        <p>The CLI is independent of the web viewer. Use <code>smash start</code>, <code>smash query</code>, <code>smash brief</code>, <code>smash session-end</code>, <code>smash health</code>, and maintenance commands even when <code>smash serve</code> is not running. Agents that support lazy-loaded instructions can also use the official <a href="skills.html">Smash skills</a> instead of MCP setup.</p>
+        <p>Use <code>smash try</code> when you want the shortest proof loop: demo creation, readiness, query proof, brief proof, viewer command, and first agent prompts in one command.</p>
+        <p>Use <code>smash proof</code> when you want to prove the cross-agent memory loop directly: one clean local workspace, one reviewed memory, and one bounded recall packet shared by CLI, skills, and MCP.</p>
+        <p>Use <code>smash onboard</code> when you want to set up a real <code>~/Smash</code> workspace: safe repair, health check, optional first memory, optional project seed, first prompts, and optional agent MCP wiring in one guided command. If the local viewer is running, <code>/onboard</code> mirrors that flow with copy buttons.</p>
+        <p>Use <code>smash seed . ~/Smash</code> from a project directory when you want Smash to create a source-backed project page from existing repo context before the first real recall. It scans allowlisted docs/rule files, blocks secret-looking values, and does not create durable memories silently.</p>
+
+        <h2 id="daily">Daily Loop</h2>
+<pre><code>smash serve
+smash onboard
+smash onboard --seed-project .
+smash seed . ~/Smash
+smash proof
+smash welcome
+smash next
+smash start ~/Smash --task "working on Smash release"
+smash session-end session-notes.md ~/Smash --limit 3
+smash health
+smash ingest-status
+smash remember "User prefers feature branches for Smash work." --type preference --scope project --project Smash --visibility project --review-after 2026-08-01
+smash remember "Temporary launch branch is release/one-off." --type project --project Smash --expires-at 2026-09-01
+smash remember "1. Bump version 2. Run tests 3. Tag and publish" --type procedure --trigger "cutting a release"
+smash remember "Deploy acme only via blue-green" --applies-when "project:acme, task:deploying"
+smash remember "Releases ship daily from main" --supersedes weekly-releases
+smash recall "how often do releases ship" --as-of 2026-03-01
+smash share "Prefer local memory"
+smash snapshot ~/Smash --output Smash-snapshot
+smash brief "working on Smash release" --project Smash
+smash query "what should I know before changing the MCP tools?" --budget small --project Smash
+smash validate</code></pre>
+
+        <h2 id="memory">Memory Commands</h2>
+        <p><strong>One rule for the memory knobs.</strong> <em>Finding it</em> → <code>--trigger</code> (a phrase that helps task-shaped recall find a recipe). <em>Fencing it</em> → <code>--applies-when</code> (conditions that demote or hide a memory outside its context). <em>Owning it</em> → <code>--scope</code>/<code>--project</code>/<code>--visibility</code> (whose memory it is and who may see it). <em>Replacing it</em> → <code>--supersedes</code> (archive the old claim with lineage; accepts the memory name or its title). <em>Aging it</em> → <code>--review-after</code>/<code>--expires-at</code>. When in doubt, save with none of them — every knob can be added later through review.</p>
+        <div class="grid">
+          <article class="panel"><h3><code>smash remember</code></h3><p>Save a local agent memory. Strong duplicates and likely conflicts are refused unless explicitly allowed.</p></article>
+          <article class="panel"><h3><code>smash recall</code></h3><p>Search local memories with recall readiness, project-aware filtering, type filters, and <code>--as-of</code> temporal recall.</p></article>
+          <article class="panel"><h3><code>smash recipes</code></h3><p>List saved procedure memories with their triggers and first steps.</p></article>
+          <article class="panel"><h3><code>smash explain-memory</code></h3><p>Show provenance, lifecycle, graph links, review issues, and recall readiness.</p></article>
+          <article class="panel"><h3><code>smash update-memory</code></h3><p>Merge new text into an existing memory and reset review state.</p></article>
+          <article class="panel"><h3><code>smash archive-memory</code></h3><p>Reversibly hide a stale or wrong memory from default recall.</p></article>
+          <article class="panel"><h3><code>smash forget-memory</code></h3><p>Permanently delete a memory after explicit confirmation.</p></article>
+        </div>
+
+        <h2 id="captures">Capture Workflow</h2>
+        <p>Use <code>smash session-end</code> at the end of a work session when an agent has notes or a transcript and should propose memory without saving it silently. Use lower-level captures for saved review inbox workflows.</p>
+        <pre><code>smash session-end session-notes.md ~/Smash --project Smash --limit 3
+cat transcript.md | smash session-end - ~/Smash --project Smash
+smash capture-session session-notes.md --project Smash
+smash capture-inbox --project Smash
+smash accept-capture raw/memory-captures/&lt;capture&gt;.md --index 1
+smash redact-capture raw/memory-captures/&lt;capture&gt;.md
+smash delete-capture raw/memory-captures/&lt;capture&gt;.md --confirm</code></pre>
+
+        <h2 id="maintenance">Maintenance</h2>
+        <pre><code>smash backup
+smash doctor --fix
+smash health
+smash status --validate
+smash memory-audit
+smash compliance-export --output Smash-audit.json
+smash team-sync ~/Smash
+smash snapshot ~/Smash --output Smash-snapshot
+smash operations
+smash benchmark "agent memory"
+smash rebuild-index
+smash rebuild-backlinks
+smash validate
+smash verify-mcp</code></pre>
+        <p>Use <code>smash backup</code> before broad repair work. Use <code>smash benchmark</code> when a wiki starts to feel slow or when you want to see how much broad wiki context the bounded packet avoided sending to an agent. <code>smash status --validate</code> and <code>smash benchmark</code> both show persistent-cache reuse so you can tell whether Smash is rereading every page or reusing unchanged records.</p>
+        <p>Use <code>smash operations</code> when health reports an interrupted write. If a marker has a rollback snapshot, run <code>smash operations ~/Smash --recover &lt;marker&gt;</code> to preview the recovery and add <code>--confirm</code> only after reviewing the plan.</p>
+        <p>Use <code>smash team-sync</code> before sharing Smash through Git. It is read-only: it checks Git state, verifies that <code>raw/</code> is protected, checks whether review or <code>visibility: private</code> memories would make sharing unsafe, keeps <code>wiki/log.md</code> local to preserve each machine's audit hash chain, and prints paste-safe setup/sync commands without pushing private source material for you.</p>
+        <p>Use <code>smash snapshot</code> when you need a static, read-only HTML export for a teammate, maintainer, security reviewer, or demo. It excludes <code>raw/</code>, captures, local operation state, and memory pages by default. With <code>--include-memories</code>, it still excludes <code>visibility: private</code> memories unless <code>--include-private-memories</code> is explicitly passed.</p>
+        <p>Use <code>smash connect &lt;agent&gt;</code> when an agent already has Smash instructions but still needs MCP wiring. It previews the config before writing.</p>
+        <pre><code>smash connect codex ~/Smash
+smash connect codex ~/Smash --write
+smash connect kiro ~/Smash --write
+smash connect claude-code ~/Smash --hooks --write
+smash verify-mcp ~/Smash</code></pre>
+        <p>Add <code>--hooks</code> (Claude Code, Codex, Cursor) to also install session hooks: every new session then starts with a bounded Smash memory brief injected automatically, and session end stores proposal-only notes with memory candidates for later review — no durable memory is written without approval. Codex has no session-end event, so it gets the session-start brief only. Sessions without memory-worthy content are skipped and duplicate end events are deduplicated, so the capture inbox does not fill with noise. The hooks run <code>smash hook session-start</code> and <code>smash hook session-end</code>, which you can also invoke directly to inspect what they inject or capture. Codex and Cursor hook support is new and follows those vendors' documented hook schemas — if a hook misbehaves there, please open an issue. If the workspace runtime predates session hooks, <code>--write</code> refreshes it automatically.</p>
+        <p>Use <code>smash recipes</code> to list saved procedure memories with their triggers, and <code>smash recall "&lt;task&gt;" --type procedure</code> to recall only recipes. Consolidation plans also surface recurring themes across session captures — the review-gated way an agent learns your patterns: detection is automatic and deterministic, but turning a pattern into one durable memory is always proposed to you first. A scheduled idle-time agent session can run the plan as a "dream pass" and bring proposals to your next session.</p>
+        <p>Use <code>smash consolidate</code> when the capture or review backlog builds up. It is read-only: it counts pending captures and memories needing review, groups duplicate captures, and prints paste-safe accept/discard/review commands to run with the user. When the backlog crosses a threshold, the injected session-start brief nudges the agent to offer a consolidation pass, and MCP agents can request the same plan through <code>review(action="consolidate")</code>.</p>
+        <p>Use <code>smash semantic</code> to inspect or enable optional hybrid recall. Lexical recall is always the default and the fallback; running <code>smash semantic --setup</code> once (or <code>python3 -m smash_mcp --semantic-setup</code> for MCP-only installs) adds a small local embedding model so paraphrased queries also find memories phrased differently — on Homebrew installs, where the runtime Python refuses direct pip installs, setup provisions the extras into <code>~/.smash-mcp-venv</code> automatically. Recall itself never touches the network — the model loads offline-only, embeddings live in plain JSON under <code>.smash-cache/</code>, and semantic-only matches are labeled with capped confidence so agents verify before trusting them. Measured results and methodology live in <code>benchmarks/RESULTS.md</code>.</p>
+        <p>From a source checkout, use the synthetic large-wiki smoke when you want local scale evidence without touching your real wiki. The script prints the exact <code>smash serve</code> command and graph URL for the generated fixture.</p>
+        <pre><code>python3 scripts/smoke_large_wiki.py --pages 10000</code></pre>
+
+        <h2 id="all">All Commands</h2>
+        <pre><code>smash --version
+smash version
+smash init [dir]
+smash serve [dir] [--port 3000]
+smash onboard [dir] [--agent codex] [--write] [--hooks] [--first-memory "..."] [--seed-project .]
+smash seed [project-dir] [dir] [--project-name name] [--overwrite] [--dry-run]
+smash try [dir] [--force] [--serve] [--port 3000]
+smash proof [dir] [--force] [--serve] [--port 3000]
+smash welcome [dir] [--project slug]
+smash prompts [dir] [--project slug]
+smash next [dir] [--project slug]
+smash health [dir] [--json]
+smash status [--validate]
+smash operations [--limit 20] [--recover marker.json] [--confirm]
+smash backup [--label name] [--include-raw]
+smash compliance-export [dir] [--output audit.json] [--project slug]
+smash team-sync [dir] [--remote git-url]
+smash share &lt;page-or-memory&gt; [dir] [--port 3000]
+smash snapshot [dir] [--output Smash-snapshot] [--include-memories] [--include-private-memories] [--force]
+smash ingest-status
+smash import-obsidian &lt;vault&gt; [dir] [--dry-run] [--overwrite]
+smash remember "text" [--type note|preference|decision|project|fact|procedure] [--project slug] [--visibility private|project|team] [--review-after YYYY-MM-DD] [--expires-at YYYY-MM-DD] [--trigger "..."] [--applies-when "..."] [--supersedes name-or-title]
+smash propose-memories &lt;file-or-text&gt; [--project slug]
+smash session-end &lt;file-or-text-or-&gt; [dir] [--project slug] [--limit 3]
+smash capture-session &lt;file-or-text&gt; [--project slug]
+smash capture-inbox [--project slug]
+smash accept-capture &lt;capture&gt; [--index N] [--visibility private|project|team]
+smash redact-capture &lt;capture&gt;
+smash delete-capture &lt;capture&gt; --confirm
+smash query "task" [--budget micro|small|medium|large] [--project slug]
+smash graph-summary ["topic"] [--limit 40] [--depth 1]
+smash benchmark ["query"] [--budget micro|small|medium|large] [--project slug]
+smash start [dir] [--task "task"] [--project slug]
+smash brief "task" [--project slug]
+smash memory-audit [--project slug]
+smash consolidate [dir] [--project slug] [--limit N]
+smash semantic [dir] [--setup] [--rebuild]
+smash recall "query" [--project slug] [--type TYPE] [--as-of YYYY-MM-DD] [--include-archived]
+smash recipes [dir] [--project slug]
+smash profile [--project slug]
+smash wins [--project slug]
+smash memory-inbox [--project slug]
+smash memory-log [--limit N]
+smash review-memory &lt;name&gt;
+smash explain-memory &lt;name&gt;
+smash update-memory &lt;name&gt; "text" [--project slug]
+smash set-memory-visibility &lt;name&gt; private|project|team
+smash archive-memory &lt;name&gt;
+smash restore-memory &lt;name&gt;
+smash forget-memory &lt;name&gt; --confirm
+smash doctor
+smash doctor --fix
+smash migrate
+smash validate [--strict]
+smash rebuild-index
+smash rebuild-backlinks
+smash api [dir] [--port 3001]
+smash verify-mcp [--json]
+smash connect &lt;agent&gt; [dir] [--write] [--config path] [--python python] [--hooks]
+smash hook session-start|session-end [dir] [--limit N] [--project slug]
+smash backup [--list] [--include-raw]
+smash restore-backup &lt;backup.tar.gz&gt; [--include-raw] --confirm
+python3 smash.py demo
+python3 smash.py query-Smash "task" [dir]</code></pre>
+        <p><code>query-Smash</code> is kept as an internal/backward-compatible alias. Prefer <code>smash query</code> in user-facing docs.</p>
+      </article>
+    </div>
+  </main>
+
+  <footer>
+    <div class="section-inner"><a href="getting-started.html">First 10 minutes</a> · <a href="security.html">Security</a>.</div>
+    <p class="analytics-note">The installed Smash product has no telemetry. This public docs site may use lightweight analytics to understand install interest.</p>
+  </footer>
+</body>
+</html>

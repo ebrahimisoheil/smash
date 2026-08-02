@@ -1,0 +1,24 @@
+{
+  "backlinks": {
+    "project-seed-smash": [
+      "index"
+    ],
+    "prefer-global-smash-workspace-for-codex": [
+      "index"
+    ],
+    "trello-board-import-for-smash-planning": [
+      "index"
+    ],
+    "log": [
+      "index"
+    ]
+  },
+  "forward": {
+    "index": [
+      "project-seed-smash",
+      "prefer-global-smash-workspace-for-codex",
+      "trello-board-import-for-smash-planning",
+      "log"
+    ]
+  }
+}

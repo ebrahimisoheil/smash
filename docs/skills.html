@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Use Smash through official lazy-loadable CLI skills when MCP setup is not needed.">
+  <title>Smash - Skills</title>
+  <Smash rel="stylesheet" href="assets/site.css">
+  <Smash rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <Smash rel="apple-touch-icon" href="assets/logo-512.png">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Smash">
+  <meta property="og:image" content="assets/logo-512.png">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:image" content="assets/logo-512.png">
+  <script src="assets/site.js" defer></script>
+</head>
+<body>
+  <nav class="site-nav" aria-label="Main">
+    <a class="brand" href="index.html"><img src="assets/logo.svg" alt="">Smash</a>
+    <div class="nav-links">
+      <a href="getting-started.html">Start</a>
+      <a href="why-smash.html">Why</a>
+      <a href="scale.html">Scale</a>
+      <a href="ui.html">UI</a>
+      <a href="concepts.html">Concepts</a>
+      <a href="memory-contract.html">Contract</a>
+      <a href="cli.html">CLI</a>
+      <a href="skills.html" aria-current="page">Skills</a>
+      <a href="api.html">API</a>
+      <a href="security.html">Security</a>
+      <a href="contributing.html">Contribute</a>
+    </div>
+  </nav>
+
+  <header class="page-hero">
+    <div class="hero-inner">
+      <span class="eyebrow">No MCP required</span>
+      <h1>Lazy-load Smash through skills.</h1>
+      <p>Official skills are small CLI workflows an agent can load when Smash is relevant: session start, retrieval, ingest, health, session-end proposals, and memory lifecycle.</p>
+    </div>
+  </header>
+
+  <main class="doc-section">
+    <div class="section-inner doc-grid">
+      <aside class="toc">
+        <strong>On this page</strong>
+        <a href="#why">Why skills</a>
+        <a href="#included">Included skills</a>
+        <a href="#install">Use them</a>
+        <a href="#rules">Rules</a>
+      </aside>
+      <article class="doc-content">
+        <h2 id="why">Why Skills</h2>
+        <p>MCP gives Smash structured tool calls, but it should not be the only path. If an agent can run local commands, it can use Smash through <code>smash</code> without an MCP server, background viewer, or extra client configuration. From a source checkout, the same workflows work with <code>python3 smash.py</code>.</p>
+        <p>The skills are intentionally proactive. Retrieval should load before work that may depend on previous context, health should load before trusting a changed wiki, ingest should load when raw files appear, and memory should load after important decisions or at session end so the agent can propose durable memory for review.</p>
+        <div class="callout">
+          <strong><code>smash serve</code> is optional</strong>
+          <p>The web viewer is only for humans. Skills, CLI commands, and MCP tools all read the same local Markdown wiki directly.</p>
+        </div>
+
+        <h2 id="included">Included Skills</h2>
+        <p>The repo ships official skill folders under <code>skills/</code>:</p>
+        <table>
+          <thead>
+            <tr><th>Skill</th><th>Use it for</th><th>First command</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>smash-health</code></td><td>Start of Smash work, after installs/upgrades, interrupted writes, backups, repair, validation.</td><td><code>smash health</code></td></tr>
+            <tr><td><code>smash-retrieve</code></td><td>Before answering context-sensitive work: bounded query packets, briefs, graph summaries, benchmarks.</td><td><code>smash query "..."</code></td></tr>
+            <tr><td><code>smash-ingest</code></td><td>When raw files are present: source ingest, stale sources, memory proposals, post-ingest checks.</td><td><code>smash ingest-status</code></td></tr>
+            <tr><td><code>smash-memory</code></td><td>After important user-approved decisions or session end: propose, remember, recall, review, explain, update, archive, restore, forget.</td><td><code>smash session-end</code></td></tr>
+          </tbody>
+        </table>
+
+        <h2 id="install">Use Them</h2>
+        <p>Point your agent at the skill folder it supports, or copy the relevant <code>SKILL.md</code> into that agent's local skill directory.</p>
+        <pre><code>skills/smash-health/SKILL.md
+skills/smash-retrieve/SKILL.md
+skills/smash-ingest/SKILL.md
+skills/smash-memory/SKILL.md</code></pre>
+        <p>Then use natural prompts that map to the skills:</p>
+        <pre><code>is Smash ready?
+start with Smash before we continue
+seed this project into Smash
+query Smash for the release process
+end this session with Smash memory proposals
+ingest raw/notes.md into Smash
+remember that I prefer short release notes</code></pre>
+
+        <h2 id="rules">Rules For Agents</h2>
+        <p>Two additions with 1.6: if Smash session hooks are installed, the startup brief arrives automatically — skip the manual brief and go straight to bounded task recall. And when a brief reports a memory backlog, offer the user a read-only <code>smash consolidate</code> pass instead of letting captures pile up.</p>
+        <ul>
+          <li>Prefer <code>smash health</code> when readiness is unclear, especially after an install, upgrade, restore, or broad wiki edit.</li>
+          <li>Start with <code>smash start</code> for readiness plus memory context, and use <code>smash session-end</code> to capture proposal-only memory candidates at the end of meaningful work.</li>
+          <li>Use <code>smash seed . ~/Smash</code> from a project directory when the user's wiki has no project context yet.</li>
+          <li>Prefer <code>smash query</code>, <code>smash brief</code>, and <code>smash graph-summary</code> over reading the whole wiki.</li>
+          <li>Use <code>smash ingest-status</code> before touching raw sources.</li>
+          <li>Do not silently create durable memory; use <code>smash remember</code> only when the user asks or approves a proposal.</li>
+          <li>Run <code>smash validate</code> and <code>smash health</code> after ingest or broad wiki edits.</li>
+        </ul>
+        <p>Use MCP when you want structured tool calls inside an MCP client. Use skills when you want a lightweight, lazy-loaded CLI workflow.</p>
+      </article>
+    </div>
+  </main>
+
+  <footer>
+    <div class="section-inner"><a href="getting-started.html">First 10 minutes</a> · <a href="cli.html">CLI reference</a>.</div>
+    <p class="analytics-note">The installed Smash product has no telemetry. This public docs site may use lightweight analytics to understand install interest.</p>
+  </footer>
+</body>
+</html>

@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Smash local HTTP API reference for status, ingest, query, memory, graph, validation, and maintenance endpoints.">
+  <title>Smash - HTTP API</title>
+  <Smash rel="stylesheet" href="assets/site.css">
+  <Smash rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <Smash rel="apple-touch-icon" href="assets/logo-512.png">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Smash">
+  <meta property="og:image" content="assets/logo-512.png">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:image" content="assets/logo-512.png">
+  <script src="assets/site.js" defer></script>
+</head>
+<body>
+  <nav class="site-nav" aria-label="Main">
+    <a class="brand" href="index.html"><img src="assets/logo.svg" alt="">Smash</a>
+    <div class="nav-links">
+      <a href="getting-started.html">Start</a>
+      <a href="why-smash.html">Why</a>
+      <a href="scale.html">Scale</a>
+      <a href="ui.html">UI</a>
+      <a href="concepts.html">Concepts</a>
+      <a href="memory-contract.html">Contract</a>
+      <a href="cli.html">CLI</a>
+      <a href="skills.html">Skills</a>
+      <a href="api.html" aria-current="page">API</a>
+      <a href="security.html">Security</a>
+      <a href="contributing.html">Contribute</a>
+    </div>
+  </nav>
+
+  <header class="page-hero">
+    <div class="hero-inner">
+      <span class="eyebrow">Local HTTP</span>
+      <h1>HTTP endpoints for the local API runner.</h1>
+      <p><code>api.py</code> exposes Smash as a dedicated loopback-only JSON API. <code>serve.py</code> still exposes the same API while the HTML viewer is running, so existing browser workflows keep working.</p>
+    </div>
+  </header>
+
+  <main class="doc-section">
+    <div class="section-inner doc-grid">
+      <aside class="toc">
+        <strong>On this page</strong>
+        <a href="#boundary">Boundary</a>
+        <a href="#read">Read endpoints</a>
+        <a href="#write">Write endpoints</a>
+        <a href="#large">Large wiki endpoints</a>
+      </aside>
+      <article class="doc-content">
+        <h2 id="boundary">Boundary</h2>
+        <p><code>api.py</code> and <code>serve.py</code> both bind to <code>127.0.0.1</code>, reject unsafe host/bind flags and unexpected <code>Host</code> headers, and have no authentication. Do not expose them to the internet without adding auth.</p>
+        <p>Use <code>python3 api.py --root /path/to/Smash</code> or <code>smash api /path/to/Smash</code> when you want a JSON-only API surface. The default API port is <code>3001</code>.</p>
+        <p>Write actions require <code>X-Smash-Local-Action: true</code>. Responses include <code>X-Smash-API-Version</code>.</p>
+        <p>The machine-readable OpenAPI document lives at <code>docs/openapi.yaml</code>.</p>
+
+        <h2 id="read">Read Endpoints</h2>
+        <pre><code>GET /api
+GET /api/status?validate=true
+GET /api/health
+GET /api/operations
+GET /api/prompts?project=slug
+GET /api/ingest-status
+GET /api/page-list?limit=100&amp;offset=0
+GET /api/pages
+GET /api/backlinks
+GET /api/memory-dashboard?project=slug
+GET /api/memory-brief?q=task&amp;project=slug
+GET /api/memory-audit?project=slug
+GET /api/memory-profile?project=slug
+GET /api/memory-inbox?project=slug
+GET /api/wins?project=slug
+GET /api/memory-log?limit=50
+GET /api/capture-inbox?project=slug
+GET /api/explain-memory?memory=name
+GET /api/query-Smash?q=query&amp;budget=micro|small|medium|large
+GET /api/validate?strict=true
+GET /api/proposal-sources
+GET /api/proposal-source?path=raw/file.md
+GET /api/search?q=query
+GET /api/context?topic=topic
+GET /api/graph-summary?topic=topic&amp;limit=40&amp;depth=1
+GET /api/graph
+GET /api/page-links?page=name&amp;limit=100&amp;offset=0</code></pre>
+
+        <h2 id="write">Write Endpoints</h2>
+        <pre><code>POST /api/raw-source
+POST /api/propose-memories
+POST /api/remember-memory
+POST /api/update-memory
+POST /api/review-memory
+POST /api/archive-memory
+POST /api/restore-memory
+POST /api/rebuild-backlinks
+POST /api/rebuild-index</code></pre>
+        <p>Web memory approval APIs intentionally do not honor duplicate/conflict override flags. If Smash reports a duplicate or conflict, review the existing memory and use the CLI or MCP tool explicitly after deciding what should coexist.</p>
+        <p><code>POST /api/remember-memory</code> accepts optional <code>visibility</code>, <code>review_after</code>, and <code>expires_at</code> fields for sharing intent, scheduled review, and temporary-memory expiry.</p>
+
+        <h2 id="large">Large Wiki Endpoints</h2>
+        <p>Agents and integrations should prefer bounded endpoints over full dumps:</p>
+        <ul>
+          <li><code>/api</code> for a compact discovery payload with recommended endpoints.</li>
+          <li><code>/api/health</code> for one machine-readable readiness packet with validation and interrupted-operation state.</li>
+          <li><code>/api/query-Smash</code> for answer-ready context.</li>
+          <li><code>/api/page-list</code> instead of <code>/api/pages</code> when paging matters.</li>
+          <li><code>/api/graph-summary</code> instead of <code>/api/graph</code> for agent context.</li>
+          <li><code>/api/page-links</code> for paginated inbound and forward links.</li>
+        </ul>
+      </article>
+    </div>
+  </main>
+
+  <footer>
+    <div class="section-inner"><a href="security.html">Security</a> · <a href="cli.html">CLI reference</a>.</div>
+    <p class="analytics-note">The installed Smash product has no telemetry. This public docs site may use lightweight analytics to understand install interest.</p>
+  </footer>
+</body>
+</html>

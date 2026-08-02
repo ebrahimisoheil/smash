@@ -1,0 +1,290 @@
+name: CI
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install ruff
+        run: python -m pip install "ruff>=0.8,<1"
+
+      - name: Run ruff
+        run: python -m ruff check .
+
+      - name: Install mypy
+        run: python -m pip install "mypy>=1.20,<1.21"
+
+      - name: Type-error ratchet (count may only go down)
+        run: python scripts/check_type_ratchet.py
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.12", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Compile Python
+        run: python -m py_compile serve.py smash.py scripts/check_release_hygiene.py scripts/check_runtime_duplication.py scripts/check_tool_contract.py scripts/prepare_release.py scripts/smoke_first_use.py scripts/smoke_http_viewer.py scripts/smoke_large_wiki.py scripts/smoke_mcp_stdio.py mcp_package/smash_core/*.py mcp_package/smash_mcp/server.py mcp_package/smash_mcp/__main__.py mcp_package/smash_mcp/__init__.py
+
+      - name: Install MCP package for verification
+        run: python -m pip install ./mcp_package
+
+      - name: Install test runner
+        run: python -m pip install "pytest>=8,<10"
+
+      - name: Run tests
+        run: python -m pytest tests
+
+      - name: Large wiki smoke test
+        if: matrix.python-version == '3.12'
+        run: python scripts/smoke_large_wiki.py --pages 1000
+
+      - name: Demo health smoke test
+        run: |
+          python scripts/smoke_first_use.py
+          python smash.py demo /tmp/smash-demo-ci --force
+          python /tmp/smash-demo-ci/smash.py doctor /tmp/smash-demo-ci
+          python /tmp/smash-demo-ci/smash.py rebuild-backlinks /tmp/smash-demo-ci
+          python /tmp/smash-demo-ci/smash.py validate /tmp/smash-demo-ci
+          python /tmp/smash-demo-ci/smash.py doctor /tmp/smash-demo-ci
+          PYTHONPATH=mcp_package python smash.py verify-mcp /tmp/smash-demo-ci --python python
+
+      - name: HTTP viewer smoke test
+        if: matrix.python-version == '3.12'
+        run: python scripts/smoke_http_viewer.py
+
+  windows-smoke:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Compile Python
+        run: python -m compileall -q smash.py serve.py scripts mcp_package
+
+      - name: Install MCP package for verification
+        run: python -m pip install ./mcp_package
+
+      - name: Install test runner
+        run: python -m pip install "pytest>=8,<10"
+
+      - name: Run broad Windows tests
+        run: python -m pytest tests -q --ignore=tests/test_installers.py --ignore=tests/test_serve.py --ignore=tests/test_large_wiki_smoke.py
+
+      - name: Demo value-loop smoke test
+        shell: pwsh
+        run: |
+          $demo = Join-Path $env:RUNNER_TEMP "smash-demo-ci"
+          python smash.py demo $demo --force
+          python smash.py query "why does Smash help agents?" $demo --budget small
+          python smash.py brief "working on agent memory" $demo
+          python smash.py benchmark "agent memory" $demo
+          python smash.py status --validate $demo
+
+      - name: Release hygiene
+        run: python scripts/check_release_hygiene.py
+
+      - name: MCP verification smoke test
+        shell: pwsh
+        run: |
+          $demo = Join-Path $env:RUNNER_TEMP "smash-demo-ci"
+          $env:PYTHONPATH = "mcp_package"
+          python smash.py verify-mcp $demo --python python
+
+  # A brand-new user on a machine that has never seen Smash: onboard must
+  # provision the MCP runtime itself and every advertised surface must
+  # work. The local wheel is offered via PIP_FIND_LINKS so the pinned
+  # smash-mcp==SMASH_VERSION resolves even before that version is on PyPI.
+  macos-clean-install:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build the smash-mcp wheel
+        run: python -m pip wheel ./mcp_package -w dist --no-deps
+
+      - name: Assert the driving python has no smash_mcp (a dirty runner would mask real breakage)
+        run: |
+          if python -c "import smash_mcp" 2>/dev/null; then
+            echo "runner is not clean: smash_mcp already importable" >&2
+            exit 1
+          fi
+
+      - name: Cold onboard with hooks and MCP
+        env:
+          PIP_FIND_LINKS: ${{ github.workspace }}/dist
+        run: |
+          export HOME="$RUNNER_TEMP/cleanhome"
+          mkdir -p "$HOME"
+          python smash.py onboard --agent claude-code --hooks --write
+          test -f "$HOME/.claude.json"
+          grep -q '"Smash"' "$HOME/.claude.json"
+          grep -q "SessionStart" "$HOME/.claude/settings.json"
+          test -x "$HOME/.smash-mcp-venv/bin/python"
+
+      - name: Session-start hook produces the memory brief
+        run: |
+          export HOME="$RUNNER_TEMP/cleanhome"
+          echo '{"session_id":"ci-cold","source":"startup"}' \
+            | python "$HOME/Smash/smash.py" hook session-start "$HOME/Smash" | grep -q "Smash memory"
+
+      - name: MCP server answers over stdio from the provisioned venv
+        run: |
+          export HOME="$RUNNER_TEMP/cleanhome"
+          python -m pip install "mcp>=1.0.0,<2"
+          # The smoke asserts demo content is recallable, so point it at a
+          # populated demo wiki — the onboarded workspace ($HOME/Smash) is
+          # intentionally empty. Still drives the provisioned venv python,
+          # which is what this step verifies. (Mirrors the Windows fix.)
+          python smash.py demo "$RUNNER_TEMP/mcp-demo" --force
+          python scripts/smoke_mcp_stdio.py "$RUNNER_TEMP/mcp-demo/wiki" \
+            --python "$HOME/.smash-mcp-venv/bin/python" --surface slim
+
+  # The same walk on Windows, where nobody has ever cold-walked by hand:
+  # pip/source is the install path, venv layout is Scripts\python.exe.
+  windows-cold-walk:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build the smash-mcp wheel
+        run: python -m pip wheel ./mcp_package -w dist --no-deps
+
+      - name: Assert the driving python has no smash_mcp
+        shell: pwsh
+        run: |
+          python -c "import smash_mcp" 2>$null
+          if ($LASTEXITCODE -eq 0) { Write-Error "runner is not clean: smash_mcp already importable"; exit 1 }
+          exit 0
+
+      - name: Cold onboard with hooks and MCP
+        shell: pwsh
+        env:
+          PIP_FIND_LINKS: ${{ github.workspace }}\dist
+        run: |
+          $env:USERPROFILE = Join-Path $env:RUNNER_TEMP "cleanhome"
+          New-Item -ItemType Directory -Force $env:USERPROFILE | Out-Null
+          python smash.py onboard --agent claude-code --hooks --write
+          if (-not (Test-Path "$env:USERPROFILE\.claude.json")) { Write-Error "no MCP config written"; exit 1 }
+          if (-not (Select-String -Quiet '"Smash"' "$env:USERPROFILE\.claude.json")) { Write-Error "Smash server missing from config"; exit 1 }
+          if (-not (Select-String -Quiet "SessionStart" "$env:USERPROFILE\.claude\settings.json")) { Write-Error "hooks not written"; exit 1 }
+          if (-not (Test-Path "$env:USERPROFILE\.smash-mcp-venv\Scripts\python.exe")) { Write-Error "MCP venv not provisioned"; exit 1 }
+
+      - name: Session-start hook produces the memory brief
+        shell: pwsh
+        run: |
+          $env:USERPROFILE = Join-Path $env:RUNNER_TEMP "cleanhome"
+          # Join multi-line stdout into one string: PowerShell captures command
+          # output as a string array, and `-notmatch` on an array returns the
+          # non-matching lines (truthy) rather than a boolean, so a brief that
+          # DOES contain "Smash memory" still trips the guard.
+          $out = ('{"session_id":"ci-cold","source":"startup"}' | python "$env:USERPROFILE\Smash\smash.py" hook session-start "$env:USERPROFILE\Smash") -join "`n"
+          if ($out -notmatch "Smash memory") { Write-Error "hook produced no brief: $out"; exit 1 }
+
+      - name: MCP server answers over stdio from the provisioned venv
+        shell: pwsh
+        run: |
+          $env:USERPROFILE = Join-Path $env:RUNNER_TEMP "cleanhome"
+          python -m pip install "mcp>=1.0.0,<2"
+          # The smoke asserts demo content is recallable, so point it at a
+          # populated demo wiki (the onboarded workspace is intentionally
+          # empty). Still drives the provisioned venv python — that's what
+          # this step verifies.
+          python smash.py demo "$env:RUNNER_TEMP\mcp-demo" --force
+          python scripts/smoke_mcp_stdio.py "$env:RUNNER_TEMP\mcp-demo\wiki" --python "$env:USERPROFILE\.smash-mcp-venv\Scripts\python.exe" --surface slim
+
+  installer-syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check shell syntax
+        run: bash -n integrations/*/install.sh integrations/*/uninstall.sh integrations/_shared/*.sh
+
+      - name: Check PowerShell syntax
+        shell: pwsh
+        run: |
+          Get-ChildItem integrations -Recurse -Include *.ps1 | ForEach-Object {
+            [scriptblock]::Create((Get-Content -Raw $_.FullName)) | Out-Null
+          }
+
+  release-hygiene:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Check tracked files for secret-looking data
+        run: python scripts/check_release_hygiene.py
+
+      - name: Check runtime duplication
+        run: python scripts/check_runtime_duplication.py
+
+      - name: Check tool contract
+        run: python scripts/check_tool_contract.py
+
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build tools
+        run: python -m pip install --upgrade build twine
+
+      - name: Build smash-mcp
+        working-directory: mcp_package
+        run: python -m build
+
+      - name: Check package metadata
+        working-directory: mcp_package
+        run: python -m twine check dist/*
+
+      - name: Install built wheel
+        working-directory: mcp_package
+        run: python -m pip install dist/*.whl
+
+      - name: MCP stdio smoke test
+        run: |
+          python smash.py demo /tmp/smash-mcp-smoke --force
+          # Slim (read-only) first on the pristine demo; the full smoke
+          # exercises mutating tools (rebuild_index, migrate_wiki,
+          # backup_wiki), so it runs last.
+          python scripts/smoke_mcp_stdio.py /tmp/smash-mcp-smoke/wiki
+          python scripts/smoke_mcp_stdio.py /tmp/smash-mcp-smoke/wiki --surface full
