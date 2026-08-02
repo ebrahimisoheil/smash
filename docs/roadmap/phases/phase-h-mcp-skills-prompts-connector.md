@@ -17,7 +17,15 @@ Implement the slim MCP adapter over the application core:
 - structured errors;
 - agent-session attribution.
 
-Preserve the official Registry identity and release metadata.
+Define and test the session hooks: pre-hook recall is non-mutating and bounded;
+post-hook capture is selective, proposal-first, and never a transcript sink.
+The hook tests must cover casual turns, explicit save requests, user
+corrections, duplicate suppression, conflict proposals, and session-end
+capture.
+
+Registry and GitHub.io publication are release work, not runtime dependencies.
+Prepare the exact-release `server.json`, package metadata, installation page,
+checksums, clean-install smoke test, and rollback procedure for Phase J.
 
 ### Skills and prompts
 
@@ -35,7 +43,9 @@ Use MCP ingestion where it is sufficient, **but do not force background connecto
 - [ ] Session-end capture creates **Proposals only**.
 - [ ] MCP tools cannot bypass authorization or Rules.
 - [ ] Connector updates create Source versions without duplication.
-- [ ] Registry metadata is reproducible from a release.
+- [ ] Pre-hook recall and selective post-hook proposal behavior pass the agent UX tests.
+- [ ] Registry metadata and GitHub.io installation instructions are reproducible from a release.
+- [ ] A clean install from GitHub.io completes the full session loop.
 - [ ] The MCP surface remains small enough for reliable tool selection.
 
 ## References

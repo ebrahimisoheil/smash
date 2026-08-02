@@ -17,7 +17,43 @@ MCP responses use the **same core-crate application contracts and authorization*
 
 Shipping the MCP server as a compiled Rust binary means the local Community Edition install is a single self-contained executable with no language runtime prerequisite on the user's machine.
 
-## 12.2 MCP consumer and connector gateway
+## 12.2 Agent session hooks and selective writes
+
+The user experience is an agent loop, not a database interaction. The local
+MCP installation should make recall feel automatic while keeping durable writes
+rare, explainable, and governed.
+
+### Pre-hook: quiet recall before the model answers
+
+On each eligible user turn, the host skill invokes a non-mutating pre-hook:
+
+1. classify the request enough to choose no recall, targeted recall, or a brief;
+2. retrieve reviewed, tenant-authorized Memory and relevant Source evidence;
+3. attach a compact, provenance-bearing context packet to the agent turn;
+4. record the retrieval/run identifiers without changing canonical Memory.
+
+The pre-hook must be fast, bounded, and safe to skip when the turn is clearly
+casual or unrelated. It never proposes or writes Memory.
+
+### Post-hook: capture candidates, not every turn
+
+The post-hook is not a transcript sink. It runs at session end, on an explicit
+“remember/save this” instruction, or when a strong durable-signal policy fires:
+new stable fact, user correction, decision, commitment, preference, or
+reusable workflow. It must suppress greetings, brainstorming, transient plans,
+duplicated context, and ordinary answers.
+
+Post-hook output is a **Proposal** with evidence, confidence, novelty/conflict
+classification, and a reason. It does not write active Memory automatically;
+review or an explicitly authorized write path is required. A rejected or
+deferred candidate is still auditable, but it must not reappear on every turn.
+
+The hook contract is host-independent: skills orchestrate timing, MCP exposes
+the governed operations, and core owns retrieval, deduplication, authorization,
+Rules, and write policy. This separation keeps 90% of the experience in the
+agent while keeping durable state outside the model.
+
+## 12.3 MCP consumer and connector gateway
 
 SMASH also **consumes** approved MCP servers. Their resources can become Sources; their tools can be invoked through the Rule gateway.
 
@@ -27,17 +63,33 @@ The gateway records: server identity, version, tool, arguments hash, actor, Rule
 
 **Tokens received for one server are never passed to another.**
 
-## 12.3 Official MCP Registry
+## 12.4 MCP Registry and GitHub.io release plan
 
-- Preserve the existing official Registry identity `io.github.ebrahimisoheil/smash` for Community Edition.
-- Maintain `server.json`, package metadata, and automated publishing as release artifacts.
-- The Registry hosts **metadata**, not application artifacts — so package publication remains part of distribution: crates.io for the Rust package, plus prebuilt platform binaries and container images for users who do not have a Rust toolchain.
+Registry publication is a **release concern**, never a runtime dependency for
+recall, proposal, or write behavior.
+
+Before Community Edition release:
+
+- validate the official identity `io.github.ebrahimisoheil/smash`;
+- generate and review `server.json` and package metadata from the exact release;
+- publish the GitHub.io installation/release page with supported hosts,
+  platform binaries, checksums, permissions, and upgrade instructions;
+- publish Registry metadata only after the binaries and package artifacts exist;
+- run a clean-install smoke test from the GitHub.io instructions and verify
+  install → pre-recall → answer → selective proposal/write;
+- record the published version and provide a rollback/unpublish procedure.
+
+The Registry hosts **metadata, not application artifacts**. Distribution remains
+the responsibility of crates.io, prebuilt binaries, containers, and the
+GitHub.io release surface. The Registry is a discovery channel, not a trust
+authority; local installation still applies explicit trust, scopes, Rules, and
+revocation.
 
 When the managed MCP endpoint is production-ready, add a remote server declaration with the correct transport and authorization metadata. **Do not publish a remote endpoint before tenant isolation, OAuth, rate limits, audit, and revocation are complete.**
 
 The official Registry is a **discovery channel, not a trust authority**. SMASH maintains its own trusted connector catalog for installed servers, publisher verification, requested scopes, permitted tools, Rules, security notices, and revocation.
 
-## 12.4 Skills
+## 12.5 Skills
 
 Skills teach agents the SMASH session contract and domain-specific workflows. **Keep them thin.**
 
@@ -56,7 +108,7 @@ Initial skills:
 
 Each skill needs versioning, compatibility metadata, test prompts, and a clear description of mutations.
 
-## 12.5 Prompts
+## 12.6 Prompts
 
 Prompts are user- or agent-invoked templates for consistent workflows. **They are not Rules.**
 
@@ -75,7 +127,7 @@ Prompt versions are recorded when they generate Proposals. Prompt text belongs i
 
 **Do not store secret policies only in prompts.**
 
-## 12.6 Native connectors
+## 12.7 Native connectors
 
 A connector turns an external system into stable Source objects and, optionally, controlled actions.
 
