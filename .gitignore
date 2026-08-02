@@ -1,0 +1,25 @@
+# Rust/Cargo build output
+/target/
+
+# Local environment and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+
+# macOS and editor noise
+.DS_Store
+*.swp
+*~
+.idea/
+.vscode/
+
+# Local Docker overrides
+docker-compose.override.yml
+
+# Local coverage/profiling output
+coverage/
+*.profraw
+*.profdata
