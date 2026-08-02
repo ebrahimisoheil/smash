@@ -11,6 +11,13 @@ SMASH needs **two correlated observability systems** with different purposes and
 
 Operational telemetry uses logs, metrics, and OpenTelemetry-compatible spans, emitted through the Rust `tracing` ecosystem with an OpenTelemetry exporter. Span context is established by a Tower layer so every handler, job, and outbound call inherits it without manual plumbing.
 
+Long-running agent processes also have a product-facing execution view backed
+by canonical Operations, AI Runs, Events, checkpoints, retained evidence, and
+outcomes. The view supports progress, pause/resume, cancellation, failure
+recovery, and policy/revocation visibility. It distinguishes execution state
+from durable Memory so users can see what the agent observed, saved as
+evidence, or proposed for admission.
+
 ## Structured logging and metrics
 
 Use structured logs with these identifiers: request, tenant, actor, agent, session, AI run, Operation, trace.

@@ -198,6 +198,21 @@ Large or sensitive bodies live as encrypted MinIO snapshots referenced by hash a
 
 An **outcome** links an AI decision or tool action to what occurred in the application or business workflow: accepted recommendation, changed CRM record, published campaign, blocked disclosure, won opportunity, human correction or reversal.
 
+### Long-running agent processes
+
+A long-running agent process is a durable product workflow, not an unbounded
+chat transcript. It has an Operation/Job for execution state, an AI Run for
+agent task and governance context, checkpoints for safe resume, Events for
+important actions, and Sources/Artifacts for retained evidence. The user can
+inspect progress, pause, resume, cancel, or revoke the process.
+
+The process may save useful evidence and checkpoints during execution, but it
+does not silently turn every observation into Memory. Reusable facts,
+preferences, decisions, workflows, Map changes, and Rules follow the relevant
+proposal, confirmation, and Rule/Harness policy for their Area. A personal
+Area may permit explicit agent proposal → user confirmation → durable write;
+shared and Cross-Map changes remain more strictly governed.
+
 These links make future analytics about actual AI behavior possible instead of limiting observability to tokens and latency.
 
 See also: [16 — Observability and operations](16-observability-operations.md).

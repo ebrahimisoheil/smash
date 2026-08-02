@@ -53,6 +53,12 @@ the governed operations, and core owns retrieval, deduplication, authorization,
 Rules, and write policy. This separation keeps 90% of the experience in the
 agent while keeping durable state outside the model.
 
+For long-running agents, the MCP surface supports a bounded process workflow:
+start or attach to a task, inspect progress, retrieve the latest checkpoint,
+pause/resume/cancel, and request selective capture. The process record is
+durable; ordinary observations remain process evidence or Proposals until the
+admission policy allows Memory or ontology activation.
+
 ## 12.3 MCP consumer and connector gateway
 
 SMASH also **consumes** approved MCP servers. Their resources can become Sources; their tools can be invoked through the Rule gateway.

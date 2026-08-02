@@ -23,7 +23,10 @@ batched proposals. Activating a Rule/Harness, forgetting or materially
 superseding Memory, and consequential durable decisions must ask the user or
 remain unactivated.
 
-Integrate Rules into **retrieval, Source disclosure, writes, and external tool calls**.
+Integrate Rules into **retrieval, Source disclosure, writes, external tool
+calls, and long-running agent processes**. Long-running processes have bounded
+Area, tool, time, cost, schedule, checkpoint, and write scopes, with mechanical
+pause and revocation.
 
 ### Pre-tool gateway
 
@@ -40,6 +43,8 @@ Create a pre-tool gateway that host integrations, MCP consumers, and native conn
 - [ ] Rule tests run before activation.
 - [ ] Conversational confirmation and UI review produce the same decision record and cannot bypass the harness.
 - [ ] **The killer demo can block publication of private Source evidence.**
+- [ ] A long-running agent cannot exceed its Area, tool, time, cost, or write
+  scope, and can be paused or revoked mechanically.
 
 ## References
 

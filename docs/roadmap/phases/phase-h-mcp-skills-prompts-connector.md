@@ -17,6 +17,10 @@ Implement the slim MCP adapter over the application core:
 - structured errors;
 - agent-session attribution.
 
+Support governed long-running agent control: status, progress, checkpoint,
+pause, resume, cancel, and selective capture. A process must be inspectable
+and recoverable without exposing raw storage concepts.
+
 Define and test the session hooks: pre-hook recall is non-mutating and bounded;
 post-hook capture is selective, proposal-first, and never a transcript sink.
 The hook tests must cover casual turns, explicit save requests, user
@@ -53,6 +57,9 @@ Use MCP ingestion where it is sufficient, **but do not force background connecto
 - [ ] Registry metadata and GitHub.io installation instructions are reproducible from a release.
 - [ ] A clean install from GitHub.io completes the full session loop.
 - [ ] The MCP surface remains small enough for reliable tool selection.
+- [ ] A long-running agent resumes from a durable checkpoint, reports progress,
+  and creates selective Proposals without silently writing every turn to
+  Memory.
 
 ## References
 
