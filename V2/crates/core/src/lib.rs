@@ -14,6 +14,12 @@ use thiserror::Error;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
+/// Compatibility marker used by the Phase A storage scaffold. Real adapters
+/// depend on the ports below; this value is not a business service.
+pub fn core_crate_placeholder() -> &'static str {
+    "smash-contracts"
+}
+
 /// Stable machine-readable application error codes. The HTTP mapping belongs
 /// to the API adapter; this enum is transport-independent.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

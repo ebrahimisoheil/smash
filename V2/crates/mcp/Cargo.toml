@@ -12,5 +12,6 @@ name = "mcp"
 path = "src/main.rs"
 
 [dependencies]
+smash-contracts = { path = "../contracts" }
 smash-core = { path = "../core" }
 smash-storage = { path = "../storage" }
