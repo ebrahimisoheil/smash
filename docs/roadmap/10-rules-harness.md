@@ -26,6 +26,21 @@ Every decision returns **Rule ID, version, effect, rationale, and next action**.
 - A **warning** is surfaced to both agent and user.
 - An **approval** creates a durable decision linked to the eventual operation.
 
+## Approval routing
+
+Approval is a property of the governed operation, not of one client surface.
+For high-impact mutations, the harness returns a confirmation request that the
+agent can present in conversation or route to UI review. The request includes
+the proposed change, affected scope, evidence, permanence, consequences, and
+the exact Rule decision.
+
+Conversational confirmation is required for activating or strengthening a
+Rule/Harness, forgetting or materially superseding Memory, sensitive or
+consequential durable preferences/decisions, and irreversible external actions.
+UI review remains available for any Proposal and is preferred for complex or
+batched review. Both channels use the same durable decision envelope and a
+last-moment authorization/version check.
+
 ## Priority and scope
 
 - Environment Rules apply broadly.

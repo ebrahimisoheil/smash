@@ -23,6 +23,11 @@ The hook tests must cover casual turns, explicit save requests, user
 corrections, duplicate suppression, conflict proposals, and session-end
 capture.
 
+The MCP adapter must also support conversational approval for high-impact
+mutations and offer “review in UI” for deferred or complex review. Both routes
+must use the same admission operation; neither may bypass Rules or
+authorization.
+
 Registry and GitHub.io publication are release work, not runtime dependencies.
 Prepare the exact-release `server.json`, package metadata, installation page,
 checksums, clean-install smoke test, and rollback procedure for Phase J.
@@ -44,6 +49,7 @@ Use MCP ingestion where it is sufficient, **but do not force background connecto
 - [ ] MCP tools cannot bypass authorization or Rules.
 - [ ] Connector updates create Source versions without duplication.
 - [ ] Pre-hook recall and selective post-hook proposal behavior pass the agent UX tests.
+- [ ] Rule/Harness activation, forgetting, and consequential Memory decisions ask for conversational confirmation or explicitly route to UI review.
 - [ ] Registry metadata and GitHub.io installation instructions are reproducible from a release.
 - [ ] A clean install from GitHub.io completes the full session loop.
 - [ ] The MCP surface remains small enough for reliable tool selection.
