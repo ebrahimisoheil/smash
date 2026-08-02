@@ -1,0 +1,202 @@
+[meta]
+fixture_id = "sales-phase-a-v1"
+schema_version = 1
+tenant_id = "018f0000-0000-7000-8000-000000000001"
+created_at = "2026-01-15T09:00:00Z"
+
+[[areas]]
+id = "018f0000-0000-7000-8000-000000000010"
+slug = "sales"
+map_version_id = "018f0000-0000-7000-8000-000000000011"
+
+[[areas]]
+id = "018f0000-0000-7000-8000-000000000020"
+slug = "marketing"
+map_version_id = "018f0000-0000-7000-8000-000000000021"
+
+[actor]
+id = "018f0000-0000-7000-8000-000000000030"
+role = "enterprise_admin"
+
+[agent]
+id = "018f0000-0000-7000-8000-000000000031"
+slug = "sales-agent"
+
+[[accounts]]
+id = "018f0000-0000-7000-8000-000000000100"
+name = "Acme Corporation"
+origin = "observed"
+
+[[accounts]]
+id = "018f0000-0000-7000-8000-000000000101"
+name = "Globex Industries"
+origin = "observed"
+
+[[people]]
+id = "018f0000-0000-7000-8000-000000000110"
+name = "Jordan Lee"
+origin = "observed"
+
+[[people]]
+id = "018f0000-0000-7000-8000-000000000111"
+name = "Morgan Chen"
+origin = "observed"
+
+[[people]]
+id = "018f0000-0000-7000-8000-000000000112"
+name = "Taylor Smith"
+origin = "observed"
+
+[[people]]
+id = "018f0000-0000-7000-8000-000000000113"
+name = "Riley Patel"
+origin = "inferred"
+
+[opportunity]
+id = "018f0000-0000-7000-8000-000000000120"
+account_id = "018f0000-0000-7000-8000-000000000100"
+owner_id = "018f0000-0000-7000-8000-000000000110"
+map_version_id = "018f0000-0000-7000-8000-000000000011"
+stage = "proposal"
+
+[[sources]]
+id = "018f0000-0000-7000-8000-000000000200"
+kind = "call"
+title = "Acme discovery call"
+state = "ready"
+asset = "assets/discovery-call.vtt"
+
+[[sources.versions]]
+id = "018f0000-0000-7000-8000-000000000201"
+version = 1
+state = "current"
+checksum = "sha256:call-v1"
+
+[[sources]]
+id = "018f0000-0000-7000-8000-000000000210"
+kind = "pdf"
+title = "Acme quarterly review"
+state = "ready"
+asset = "assets/quarterly-review.pdf"
+object_key = "tenants/018f0000-0000-7000-8000-000000000001/sources/018f0000-0000-7000-8000-000000000210.pdf"
+
+[[sources.versions]]
+id = "018f0000-0000-7000-8000-000000000211"
+version = 1
+state = "superseded"
+checksum = "sha256:pdf-v1"
+
+[[sources.versions]]
+id = "018f0000-0000-7000-8000-000000000212"
+version = 2
+state = "current"
+checksum = "sha256:pdf-v2"
+
+[[chunks]]
+id = "018f0000-0000-7000-8000-000000000220"
+source_version_id = "018f0000-0000-7000-8000-000000000201"
+representation = "transcript"
+coordinate = "00:03:12-00:04:01"
+content_hash = "blake3:chunk-call-1"
+
+[[chunks]]
+id = "018f0000-0000-7000-8000-000000000221"
+source_version_id = "018f0000-0000-7000-8000-000000000201"
+representation = "transcript"
+coordinate = "00:17:44-00:18:20"
+content_hash = "blake3:chunk-call-2"
+
+[[memories]]
+id = "018f0000-0000-7000-8000-000000000300"
+state = "active"
+origin = "approved"
+claim = "Acme requires quarterly executive review before renewal."
+valid_from = "2026-01-01T00:00:00Z"
+valid_until = "2026-12-31T23:59:59Z"
+evidence_source_version_ids = ["018f0000-0000-7000-8000-000000000201", "018f0000-0000-7000-8000-000000000212"]
+
+[[memories]]
+id = "018f0000-0000-7000-8000-000000000301"
+state = "active"
+origin = "inferred"
+claim = "Acme does not require executive review before renewal."
+valid_from = "2026-01-01T00:00:00Z"
+valid_until = "2026-12-31T23:59:59Z"
+contradicts_memory_id = "018f0000-0000-7000-8000-000000000300"
+
+[[memories]]
+id = "018f0000-0000-7000-8000-000000000302"
+state = "active"
+origin = "approved"
+claim = "Acme requires quarterly executive review and a security sign-off before renewal."
+supersedes_memory_id = "018f0000-0000-7000-8000-000000000300"
+supersession_reason = "Security sign-off was added after the January review."
+
+[[proposals]]
+id = "018f0000-0000-7000-8000-000000000400"
+state = "pending"
+origin = "proposed"
+kind = "memory"
+
+[[proposals]]
+id = "018f0000-0000-7000-8000-000000000401"
+state = "approved"
+origin = "approved"
+kind = "relationship"
+
+[[proposals]]
+id = "018f0000-0000-7000-8000-000000000402"
+state = "rejected"
+origin = "proposed"
+kind = "memory"
+rejection_reason = "Evidence span does not support the proposed claim."
+
+[rule]
+id = "018f0000-0000-7000-8000-000000000500"
+area_id = "018f0000-0000-7000-8000-000000000010"
+state = "active"
+
+[[rule.cases]]
+name = "private evidence reuse"
+effect = "block"
+
+[[rule.cases]]
+name = "external renewal action"
+effect = "require_approval"
+
+[cross_map]
+id = "018f0000-0000-7000-8000-000000000600"
+state = "proposed"
+source_area_id = "018f0000-0000-7000-8000-000000000010"
+target_area_id = "018f0000-0000-7000-8000-000000000020"
+relation = "related_to"
+rationale = "Sales account concept may enrich the Marketing account view."
+
+[[events]]
+action = "create"
+target_type = "source"
+target_id = "018f0000-0000-7000-8000-000000000200"
+idempotency_key = "sales-source-call-create"
+
+[[events]]
+action = "approve"
+target_type = "memory"
+target_id = "018f0000-0000-7000-8000-000000000300"
+idempotency_key = "sales-memory-approve"
+
+[[events]]
+action = "supersede"
+target_type = "memory"
+target_id = "018f0000-0000-7000-8000-000000000302"
+idempotency_key = "sales-memory-supersede"
+
+[replay]
+idempotency_key = "sales-memory-approve"
+first_result = "018f0000-0000-7000-8000-000000000300"
+replayed_result = "018f0000-0000-7000-8000-000000000300"
+
+[concurrency]
+resource_id = "018f0000-0000-7000-8000-000000000300"
+reviewed_version = 1
+current_version = 2
+result = "resource.version_conflict"
