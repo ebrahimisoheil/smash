@@ -101,5 +101,9 @@ V2/apps/web/next-env.d.ts
 # Root Rust workspace build artifacts
 target/
 
+# Root web build and dependency artifacts
+apps/web/node_modules/
+apps/web/.next*/
+
 # Local Phase B/C evidence and backup artifacts
 var/
