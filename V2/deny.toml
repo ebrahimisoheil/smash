@@ -1,0 +1,117 @@
+# cargo-deny configuration for the SMASH V2 workspace.
+#
+# The `[[bans.deny]]` entry for `axum` below is the primary mechanical
+# enforcement for the "core is framework-free" invariant from
+# ADR-0004 (V2/docs/adr/0004-crate-boundaries-and-dependency-direction.md)
+# and V2/docs/roadmap/06-service-architecture.md §6.1 ("the core crate must
+# not depend on Axum"). If someone adds `axum = "..."` to
+# crates/core/Cargo.toml (directly or via a new transitive edge), `cargo
+# deny check bans` MUST fail. This is what session A1's acceptance check
+# verifies: plant an axum import in smash-core, confirm `cargo deny check`
+# fails, then remove it.
+#
+# `wrappers` below is set to the ONLY workspace crate allowed to be axum's
+# direct dependent — `smash-api`. Verified empirically via `cargo tree -i
+# axum`: today axum has exactly one dependent in the whole resolved graph
+# (`smash-api`), so this ban has zero false positives against the current
+# dependency tree.
+#
+# `tower-http` and the rest of the ADR-0004 table (contracts/core must also
+# stay free of sqlx, tokio, reqwest, and lancedb) are deliberately NOT
+# enforced here with a matching `bans.deny` entry. Verified empirically
+# (`cargo tree -i tower-http`, `cargo tree -i reqwest`) that both are
+# already pulled into the graph several hops deep through `smash-storage`'s
+# own dependencies — e.g. `lancedb` vendors `reqwest`, which itself pulls a
+# second copy of `tower-http`, via `lance-namespace-reqwest-client`. A
+# global `deny` on those names would either require listing every
+# intermediate vendor crate as a `wrappers` entry (brittle — breaks on every
+# lancedb/reqwest upgrade that reshuffles its dependency tree) or produce
+# false-positive CI failures unrelated to the actual invariant we care
+# about. Because our own workspace crate graph is a strict DAG (contracts <-
+# core <- storage <- {api, worker, mcp}) and `smash-core` only ever depends
+# on `smash-contracts`, none of those crates can structurally reach
+# `smash-core` unless someone edits `crates/core/Cargo.toml` directly —
+# which is exactly what the CI step `check-core-boundary` (see
+# .github/workflows/rust-ci.yml) catches via `cargo tree -p smash-core`,
+# asserting none of axum/tower/tower-http/sqlx/tokio/reqwest/lancedb appear
+# in core's own dependency subtree. Treat that CI step and this file as one
+# combined enforcement mechanism, not two independent ones — `cargo deny
+# check bans` catches the single case (axum) that's cleanly bannable
+# workspace-wide; `check-core-boundary` catches everything else, scoped to
+# exactly the subtree that must stay clean.
+#
+# Run locally with:
+#   cargo deny check
+
+[graph]
+targets = []
+all-features = false
+no-default-features = false
+
+# ---------------------------------------------------------------------------
+# Advisories — RustSec advisory database.
+# ---------------------------------------------------------------------------
+[advisories]
+db-path = "~/.cargo/advisory-db"
+db-urls = ["https://github.com/rustsec/advisory-db"]
+yanked = "deny"
+ignore = [
+    # RUSTSEC-2024-0436: `paste` is unmaintained (archived by its author,
+    # no safe upgrade). Pulled in transitively via lancedb -> datafusion's
+    # dependency tree, several hops from any workspace crate — not a
+    # reachable vulnerability, just an unmaintained-crate advisory. Revisit
+    # when lancedb/datafusion drop it or ship a `pastey` migration.
+    "RUSTSEC-2024-0436",
+]
+
+# ---------------------------------------------------------------------------
+# Licenses — allow-list. Anything not listed here fails CI.
+# ---------------------------------------------------------------------------
+[licenses]
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-3.0",
+    "Zlib",
+    "CC0-1.0",
+    "MPL-2.0",
+    "BSL-1.0",
+    "Unlicense",
+    "CDLA-Permissive-2.0",
+    "0BSD",
+]
+confidence-threshold = 0.8
+
+[licenses.private]
+# Our own six workspace crates are unpublished (publish = false) and carry
+# no SPDX license — they are not going to a registry. Don't fail CI over
+# our own crates' missing license metadata; still check every real
+# (published) dependency's license against the allow-list above.
+ignore = true
+
+# ---------------------------------------------------------------------------
+# Bans — duplicate-version policy and the crate-boundary enforcement.
+# ---------------------------------------------------------------------------
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+highlight = "all"
+allow-wildcard-paths = true
+
+[[bans.deny]]
+name = "axum"
+wrappers = ["smash-api"]
+use-instead = "axum may only be a direct dependency of smash-api — see ADR-0004"
+
+# ---------------------------------------------------------------------------
+# Sources — where dependencies may come from.
+# ---------------------------------------------------------------------------
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []
