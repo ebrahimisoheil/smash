@@ -37,6 +37,17 @@ impl PgRepository {
         Self { pool }
     }
 
+    pub async fn connect_and_migrate(database_url: &str) -> Result<Self, ApplicationError> {
+        let repository = Self::connect(database_url).await?;
+        sqlx::migrate!("../../migrations")
+            .run(&repository.pool)
+            .await
+            .map_err(|_| ApplicationError::DependencyUnavailable {
+                dependency: "postgres_migrations",
+            })?;
+        Ok(repository)
+    }
+
     pub async fn ping(&self) -> Result<(), ApplicationError> {
         sqlx::query("SELECT 1")
             .execute(&self.pool)
@@ -250,6 +261,32 @@ impl ObjectStore for S3ObjectStore {
 /// Compatibility marker retained from the Phase A scaffold.
 pub fn storage_crate_placeholder() -> &'static str {
     "smash-contracts"
+}
+
+pub async fn wait_for_tcp_endpoint(
+    endpoint: &str,
+    attempts: usize,
+) -> Result<(), ApplicationError> {
+    let authority = endpoint
+        .split_once("://")
+        .map(|(_, rest)| rest)
+        .unwrap_or(endpoint)
+        .split('/')
+        .next()
+        .unwrap_or_default();
+    let (host, port) = authority
+        .rsplit_once(':')
+        .map(|(host, port)| (host, port.parse::<u16>().unwrap_or(80)))
+        .unwrap_or((authority, 80));
+    for _ in 0..attempts {
+        if tokio::net::TcpStream::connect((host, port)).await.is_ok() {
+            return Ok(());
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+    }
+    Err(ApplicationError::DependencyUnavailable {
+        dependency: "object_store",
+    })
 }
 
 #[cfg(test)]

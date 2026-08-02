@@ -27,6 +27,25 @@ API and worker start only after PostgreSQL/MinIO health checks and the one-shot
 migration job succeed. A restart with `docker compose up` preserves named
 volumes and must not duplicate initialization.
 
+The `migrate` service runs the API composition root with `--migrate`, so SQLx
+records the applied migration in its ledger. API and worker then verify the
+already-migrated database without attempting a second migration.
+
+## Fixture and durability proof
+
+With the stack running:
+
+```sh
+./scripts/seed-sales.sh
+./scripts/seed-sales.sh                 # idempotency check
+SMASH_ALLOW_DESTRUCTIVE_RESTORE=1 \
+  ./scripts/prove-backup-restore.sh var/backups/b8-proof
+```
+
+The proof backs up PostgreSQL data and MinIO objects, replaces both named
+volumes, re-runs the schema migration, restores the data/object backup, and
+asserts that the fixture Events and Source objects survived.
+
 ## Reset versus restore
 
 `./scripts/reset-local.sh` is a destructive local reset. It removes PostgreSQL

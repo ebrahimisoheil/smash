@@ -28,6 +28,34 @@
         }
       }
     },
+    "/v1/readiness": {
+      "get": {
+        "tags": [],
+        "operationId": "readiness",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/version": {
       "get": {
         "tags": [],

@@ -1,4 +1,14 @@
 target/
+**/target/
+V2/
+prototypes/
+.smash-cache/
+.smash-mcp-python
+Smash-proof/
+raw/
+wiki/
+tests/
+__pycache__/
 .git/
 **/*.md
 docs/

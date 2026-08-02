@@ -18,18 +18,19 @@ services:
       retries: 12
 
   migrate:
-    image: postgres:16-alpine
+    build:
+      context: .
+      dockerfile: Dockerfile
     depends_on:
       postgres:
         condition: service_healthy
+    entrypoint: ["/app/api"]
+    command: ["--migrate"]
     environment:
-      PGPASSWORD: ${POSTGRES_PASSWORD}
-    volumes:
-      - ./migrations/20260802120000_initial_schema.sql:/migrations/001_initial_schema.sql:ro
-    entrypoint: ["/bin/sh", "-c"]
-    command: >-
-      exec psql --host=postgres --username=${POSTGRES_USER}
-      --dbname=${POSTGRES_DB} --file=/migrations/001_initial_schema.sql
+      SMASH_ENVIRONMENT: ${SMASH_ENVIRONMENT}
+      SMASH_DATABASE_URL: ${SMASH_DATABASE_URL}
+      SMASH_MINIO_ENDPOINT: ${SMASH_MINIO_ENDPOINT}
+      SMASH_MINIO_BUCKET: ${SMASH_MINIO_BUCKET}
 
   minio:
     image: minio/minio:RELEASE.2025-02-28T09-55-16Z
