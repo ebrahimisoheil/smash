@@ -127,3 +127,115 @@ the original SourceVersion.
   lifecycle; evidence is not confused with derived output or claim.
 - The ingestion state machine includes all required normal, partial, failure,
   quarantine, retry, and deletion paths.
+
+## A6 — Governance, decisions, and operations
+
+| Object | Identity | Lifecycle | Ownership boundary | Who may mutate | Events emitted | Versioned? | Idempotency and concurrency |
+|---|---|---|---|---|---|---|---|
+| **Memory** | `memory_id` within `(tenant_id, area_id)` | `proposed` → `active` → `superseded` / `expired` / `archived` | Durable governed claim owned by an Area | Proposal/review workflow; authorized user may edit through a new version | `memory.proposed`, `memory.activated`, `memory.superseded`, `memory.expired`, `memory.archived` | Yes; current version pointer plus immutable lineage | Exact duplicate reuses the logical Memory; semantic duplicates/contradictions require review; stale writes return current state |
+| **MemoryVersion** | `(memory_id, version_number)` and normalized content hash | `draft` → `current` → `superseded` / `rejected` | Immutable claim version with applicability, validity, attribution, and evidence references | Created only by governed write/review commands | `memory_version.created`, `memory_version.committed`, `memory_version.superseded` | Yes, append-only | Same normalized claim/scope is idempotent; current-pointer update is compare-and-swap |
+| **EvidenceLink** | `evidence_link_id`; unique `(memory_version_id, evidence target, span)` | `proposed` → `attached` → `withdrawn` | Link from a governed claim to SourceVersion/Chunk evidence | Proposal/review workflow; withdrawal requires authorization | `evidence_link.proposed`, `evidence_link.attached`, `evidence_link.withdrawn` | Yes, attribution and evidence coordinates are retained | Duplicate links collapse by deterministic key; withdrawal uses version token |
+| **Proposal** | `proposal_id` within tenant and Area | `pending` → `approved` / `rejected` / `merged` / `withdrawn` | Review boundary between observation and durable claim/policy | Agent or processor may propose; reviewer or explicit policy decides | `proposal.created`, `proposal.approved`, `proposal.rejected`, `proposal.merged`, `proposal.withdrawn` | Yes; decision and rejection reason are retained | Proposal creation keyed by source/run/content hash; only one terminal decision wins under optimistic concurrency |
+| **Rule** | `rule_id` within `(tenant_id, area_id)` | `draft` → `active` → `superseded` / `disabled` | Enforceable policy evaluated outside the language model | Area Admin or governance administrator | `rule.created`, `rule.activated`, `rule.superseded`, `rule.disabled` | Yes; immutable RuleVersion records effect and condition | Publish/disable is idempotent; active version pointer uses compare-and-swap |
+| **Event** | `event_id` globally unique; aggregate and sequence identify its stream position | `appended` → `retained` / `redacted` according to policy | Immutable tenant decision ledger and audit record | Append-only by the transaction that changes a domain object; no ordinary update/delete | `event.appended` (the event itself) | No mutation; schema version and payload classification are retained | Idempotency key and aggregate sequence prevent duplicate appends; transaction commit is atomic with the described change |
+| **Operation/Job** | `operation_id`; idempotency key is unique within command scope | `queued` → `leased` → `running` → `succeeded` / `failed` / `cancelled` | Tenant-owned long-running work record; queue adapter is replaceable | API creates/cancels; worker leases, renews, retries, and completes | `operation.queued`, `operation.leased`, `operation.started`, `operation.succeeded`, `operation.failed`, `operation.cancelled` | Yes; attempt, lease, and retry history are retained | Submission is idempotent by scoped key; lease renewal and completion require lease token; expired leases may be safely reclaimed |
+| **AI Run** | `ai_run_id` within tenant; one bounded agent task | `started` → `running` → `completed` / `failed` / `cancelled` / `replayed` | Tenant-owned product and governance record | Agent runtime creates; system records spans/outcome; authorized reviewer may annotate | `ai_run.started`, `ai_run.completed`, `ai_run.failed`, `ai_run.cancelled`, `ai_run.replayed` | Yes; model, prompt, tool, Map, Rule, and context references are immutable per run | Start is idempotent by session/task key; terminal transition is compare-and-swap; replay creates a linked new run |
+| **Decision Envelope** | `decision_envelope_id`; one immutable envelope per AI Run decision | `captured` → `sealed` → `replayed` / `superseded` (record remains) | Tenant decision trace containing resolved context, evidence, policy, action, uncertainty, and outcome | Runtime seals it; governance users may append correction/feedback, never rewrite captured facts | `decision_envelope.captured`, `decision_envelope.sealed`, `decision_envelope.replayed`, `decision_envelope.corrected` | Yes; schema/version references and classified snapshot pointers are retained | Capture is idempotent by AI Run and decision stage; sealing is one-way and guarded by run version |
+
+## Disambiguation matrix
+
+| Object | What it is | Identity built from | Evidence or claim? | Canonical or regenerable? | Who can create it? | Trust/origin |
+|---|---|---|---|---|---|---|
+| **Source** | Original evidence or stable external reference | Tenant, Area, Source ID; locator/content identity is metadata | Evidence boundary | Canonical metadata and retained original reference | Authorized human, connector, or upload workflow | Untrusted until verified; provenance is preserved |
+| **Chunk** | Coordinate-bearing searchable span derived from a SourceVersion | SourceVersion, representation, coordinate, content hash | Evidence projection | Regenerable | Chunking worker | Inherits Source provenance; never a claim by itself |
+| **Entity** | Area-local semantic identity for a person, account, concept, or other Map kind | Tenant, Area, Entity ID; aliases are attributes | Observed/inferred semantic record, not durable claim text | Canonical identity; projections may be rebuilt | Proposal/review workflow or authorized Area user | Origin explicitly `observed`, `inferred`, `proposed`, or `approved` |
+| **Memory** | Durable governed claim with applicability, validity, attribution, and lineage | Tenant, Area, Memory ID; current version points to content | Claim | Canonical claim plus rebuildable retrieval projection | Proposal/review workflow or explicitly authorized command | Admission state and origin are separate; active does not mean equally trusted |
+| **Proposal** | Reviewable candidate at the boundary between evidence and durable state | Proposal ID plus source/run/content hash | Candidate claim, relation, rule, or Map change | Canonical review record; derived payload may be regenerated with provenance | Agent, processor, or user | Proposed only until an explicit approval; rejection reason is retained |
+| **Rule** | Enforceable policy evaluated outside the model | Tenant, Area, Rule ID and immutable RuleVersion | Policy/constraint, not evidence | Canonical versioned policy | Authorized governance administrator | Authority comes from scope and approval, not from Source or model output |
+
+The matrix is normative: no API or persistence model may collapse these six
+objects into a generic “record,” and no graph edge may imply equal trust merely
+because its endpoints are both present.
+
+## Remaining state machines
+
+### Memory lifecycle
+
+```mermaid
+stateDiagram-v2
+    [*] --> proposed
+    proposed --> active: approve/admit
+    proposed --> archived: withdraw
+    active --> superseded: new version admitted
+    active --> expired: validity ends
+    active --> archived: archive
+    superseded --> archived
+    expired --> archived
+```
+
+Every superseding version points to its predecessor and records the reason;
+historical queries can reconstruct the version active at a past time.
+
+### Proposal review
+
+```mermaid
+stateDiagram-v2
+    [*] --> pending
+    pending --> approved
+    pending --> rejected
+    pending --> merged
+    pending --> withdrawn
+```
+
+Rejection is terminal for that proposal and retains a structured reason,
+reviewer, policy result, and evidence context as evaluation data.
+
+### Operation/Job
+
+```mermaid
+stateDiagram-v2
+    [*] --> queued
+    queued --> leased
+    leased --> running
+    leased --> queued: lease expires
+    running --> succeeded
+    running --> failed
+    running --> cancelled
+    failed --> queued: retryable
+    failed --> failed: terminal failure recorded
+```
+
+Leases have an owner and expiry. A worker may renew only its lease; completion
+with an expired lease is rejected. Retry attempts are recorded, and handlers
+must be safe to replay.
+
+### Rule effect
+
+```mermaid
+flowchart LR
+    condition[Rule condition matches] --> effect{Effect}
+    effect --> allow[allow]
+    effect --> warn[warn]
+    effect --> approval[require_approval]
+    effect --> block[block]
+```
+
+`allow`, `warn`, `require_approval`, and `block` are the complete Phase A
+effect vocabulary. A model cannot downgrade a `block` or bypass a required
+approval.
+
+### AI Run and Decision Envelope
+
+An AI Run records the bounded task and its operational trace. Its Decision
+Envelope is sealed once the resolved context, evidence, Rules, action, and
+uncertainty are captured. Replay never repeats external side effects by
+default; it creates a linked run and envelope instead.
+
+## A6 evidence checklist
+
+- Governance catalog covers Memory, MemoryVersion, EvidenceLink, Proposal,
+  Rule, Event, Operation/Job, AI Run, and Decision Envelope.
+- The disambiguation matrix makes Source, Chunk, Entity, Memory, Proposal, and
+  Rule distinct by identity, provenance, regeneration, and trust.
+- Memory, Proposal, Operation/Job, and Rule effect state machines are explicit;
+  AI Run and Decision Envelope immutability/replay rules are recorded.
