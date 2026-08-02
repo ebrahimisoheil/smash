@@ -4,6 +4,13 @@
 
 After Community Edition is credible and used, the managed service focuses on **operational and organizational capabilities rather than redefining Memory**.
 
+The managed product supports both multi-tenant hosted and single-tenant
+hosted deployments. Single-tenant hosted reserves a customer's placement and
+operational boundary without changing tenant IDs, APIs, Maps, Memory, or
+authorization semantics. It is a first-class managed tier for customers that
+need dedicated resources, residency, encryption-key ownership, or stronger
+operational isolation.
+
 ## 20.1 Multi-tenancy and scale
 
 Introduce production tenant provisioning over shared PostgreSQL, MinIO, and LanceDB services:

@@ -164,9 +164,10 @@ Initially every managed tenant can point to the same shared services with differ
 
 | Tier | Description |
 |---|---|
-| Community Edition | Single tenant |
-| Standard SaaS | Shared infrastructure with logical isolation |
-| Enterprise | Shared or dedicated placement |
+| Community Edition | Single-tenant self-hosted |
+| Standard SaaS | Multi-tenant hosted with logical isolation |
+| Dedicated Hosted | Single-tenant hosted placement operated by SMASH |
+| Enterprise | Shared or dedicated placement by contract |
 | Regulated | Dedicated placement |
 
 ### Deletion

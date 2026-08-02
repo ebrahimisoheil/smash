@@ -27,6 +27,7 @@ The following decisions are **normative for V2 unless replaced by an explicit ar
 | 19 | AI runs, decision envelopes, Rule evaluations, tool calls, and outcomes are canonical tenant product records, separate from sampled operational telemetry. | [16](16-observability-operations.md) |
 | 20 | Future AI Tracer, replay, and decision analytics must be possible from V2 records **without requiring raw cross-tenant surveillance**. | [16 §16.3–16.4](16-observability-operations.md#163-ai-tracer-and-replay) |
 | 21 | The domain and application core is a **framework-free Rust crate**. Axum, the worker, and the MCP adapter are surfaces over it; none of them owns Memory logic or authorization. | [06 §6.1](06-service-architecture.md#61-rust-and-axum-are-the-product-backend) |
+| 22 | SMASH supports single-tenant self-hosted, single-tenant hosted, and multi-tenant hosted profiles over one domain contract; placement changes do not change stable IDs or authorization semantics. | [ADR-0022](../adr/0022-deployment-profiles-and-single-tenant-hosted.md), [05 §5.4](05-storage-responsibilities.md#54-tenant-provisioning-and-placement) |
 
 ## Backend crate selection
 
