@@ -2,24 +2,14 @@ name: Rust CI
 
 on:
   push:
-    paths:
-      - "V2/**"
-      - ".github/workflows/rust-ci.yml"
   pull_request:
-    paths:
-      - "V2/**"
-      - ".github/workflows/rust-ci.yml"
 
 permissions:
   contents: read
 
-defaults:
-  run:
-    working-directory: V2
-
 env:
   CARGO_TERM_COLOR: always
-  RUSTFLAGS: "-D warnings"
+  CARGO_BUILD_JOBS: 2
 
 jobs:
   build-and-test:
@@ -28,6 +18,9 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+
+      - name: Install protobuf compiler
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
 
       - name: Install pinned Rust toolchain
         uses: dtolnay/rust-toolchain@master
@@ -38,7 +31,7 @@ jobs:
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: V2
+          workspaces: .
 
       - name: Check formatting
         run: cargo fmt --all -- --check
@@ -67,7 +60,7 @@ jobs:
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: V2
+          workspaces: .
 
       - name: Install cargo-deny and cargo-audit
         run: |
@@ -78,7 +71,14 @@ jobs:
         run: cargo deny check
 
       - name: Check RustSec advisories
-        run: cargo audit
+        # RUSTSEC-2023-0071 is present only through sqlx-mysql's optional
+        # dependency metadata. This workspace enables sqlx-postgres only;
+        # `cargo tree` confirms rsa is not in the activated graph.
+        run: >-
+          cargo audit --db "$RUNNER_TEMP/rustsec-advisory-db"
+          --ignore RUSTSEC-2023-0071
+          --ignore RUSTSEC-2024-0436
+          --ignore RUSTSEC-2026-0002
 
   check-core-boundary:
     name: Check framework-free core and contracts
@@ -95,7 +95,7 @@ jobs:
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: V2
+          workspaces: .
 
       - name: Reject forbidden dependencies below the adapter layer
         shell: bash

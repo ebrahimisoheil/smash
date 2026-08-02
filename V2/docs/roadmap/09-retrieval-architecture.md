@@ -106,3 +106,20 @@ Track at least:
 - reviewer edit, rejection, and merge rates.
 
 **Graph complexity is not a success metric.** Retrieval quality and downstream task correctness matter more than the number of nodes or edges.
+
+## 9.6 Normative algorithm and mathematics
+
+The detailed V2 search pipeline and formulas live in:
+
+- [V2 retrieval algorithm](../contracts/retrieval-algorithm.md) — stage order,
+  authorization prefilters, lexical/dense channels, fusion, reranking, graph
+  expansion, ranking, packet packing, and trace requirements;
+- [V2 retrieval mathematics](../contracts/retrieval-math.md) — vector
+  similarity, BM25, RRF, weighted fusion, relevance floors, recency/confidence
+  modifiers, reranking, token budgets, and benchmark metrics.
+
+These documents import the reusable algorithmic lessons from the legacy
+`memory-smash` project. They do not import its Python module layout, Blake3
+record identity, mandatory Voyage provider, or headline benchmark numbers.
+Provider/model selection and all tuning constants remain subject to the Phase E
+benchmark gate.
