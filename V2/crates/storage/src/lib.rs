@@ -8,7 +8,7 @@
 
 use async_trait::async_trait;
 use aws_sdk_s3::{primitives::ByteStream, Client as S3Client};
-use smash_contracts::TenantId;
+use smash_contracts::{OperationId, OperationState, TenantId};
 use smash_core::{
     ApplicationError, DomainEvent, IdempotencyKey, ObjectStore, Repository, VersionToken,
 };
@@ -19,6 +19,14 @@ use uuid::Uuid;
 #[derive(Clone, Debug)]
 pub struct PgRepository {
     pool: PgPool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DurableLease {
+    pub operation_id: OperationId,
+    pub lease_token: String,
+    pub attempt: u32,
+    pub checkpoint: Option<serde_json::Value>,
 }
 
 impl PgRepository {
@@ -49,6 +57,111 @@ impl PgRepository {
 
     pub fn pool(&self) -> &PgPool {
         &self.pool
+    }
+
+    /// Atomically claims queued work or work whose lease expired. The state
+    /// predicate and token update happen in one statement, so two workers
+    /// cannot receive the same lease.
+    pub async fn claim_operation(
+        &self,
+        tenant_id: TenantId,
+        lease_token: &str,
+        lease_seconds: i64,
+    ) -> Result<Option<DurableLease>, ApplicationError> {
+        let row = sqlx::query(
+            "UPDATE operations SET state = 'running', attempt = attempt + 1,
+                 lease_token = $2, lease_expires_at = now() + make_interval(secs => $3),
+                 updated_at = now()
+             WHERE operation_id = (
+                 SELECT operation_id FROM operations
+                 WHERE tenant_id = $1 AND cancel_requested = false
+                   AND (state = 'queued' OR (state IN ('leased', 'running') AND lease_expires_at <= now()))
+                   AND attempt < max_attempts
+                 ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT 1
+             )
+             RETURNING operation_id, attempt, checkpoint",
+        )
+        .bind(tenant_id.as_uuid())
+        .bind(lease_token)
+        .bind(lease_seconds.max(1))
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|_| ApplicationError::DependencyUnavailable { dependency: "postgres" })?;
+        Ok(row.map(|row| DurableLease {
+            operation_id: OperationId::from(row.get::<Uuid, _>("operation_id")),
+            lease_token: lease_token.to_owned(),
+            attempt: row.get::<i32, _>("attempt") as u32,
+            checkpoint: row.try_get("checkpoint").ok(),
+        }))
+    }
+
+    pub async fn save_checkpoint(
+        &self,
+        tenant_id: TenantId,
+        operation_id: OperationId,
+        lease_token: &str,
+        key: &str,
+        payload: &serde_json::Value,
+        progress: i16,
+    ) -> Result<(), ApplicationError> {
+        let result = sqlx::query(
+            "INSERT INTO operation_checkpoints (operation_id, tenant_id, checkpoint_key, payload, progress, created_at)
+             SELECT $1, $2, $4, $5, $6, now() WHERE EXISTS
+             (SELECT 1 FROM operations WHERE operation_id = $1 AND tenant_id = $2 AND lease_token = $3 AND state = 'running')
+             ON CONFLICT (operation_id, checkpoint_key) DO UPDATE SET payload = EXCLUDED.payload, progress = EXCLUDED.progress, created_at = EXCLUDED.created_at",
+        )
+        .bind(operation_id.as_uuid()).bind(tenant_id.as_uuid()).bind(lease_token)
+        .bind(key).bind(payload).bind(progress.clamp(0, 100))
+        .execute(&self.pool).await
+        .map_err(|_| ApplicationError::DependencyUnavailable { dependency: "postgres" })?;
+        if result.rows_affected() == 0 {
+            return Err(ApplicationError::OperationNotFound);
+        }
+        Ok(())
+    }
+
+    pub async fn request_operation_cancel(
+        &self,
+        tenant_id: TenantId,
+        operation_id: OperationId,
+    ) -> Result<(), ApplicationError> {
+        let result = sqlx::query(
+            "UPDATE operations SET cancel_requested = true,
+                 state = CASE WHEN state = 'queued' THEN 'cancelled' ELSE state END, updated_at = now()
+             WHERE tenant_id = $1 AND operation_id = $2 AND state NOT IN ('succeeded', 'failed', 'cancelled')",
+        ).bind(tenant_id.as_uuid()).bind(operation_id.as_uuid()).execute(&self.pool).await
+        .map_err(|_| ApplicationError::DependencyUnavailable { dependency: "postgres" })?;
+        if result.rows_affected() == 0 {
+            return Err(ApplicationError::OperationNotFound);
+        }
+        Ok(())
+    }
+
+    pub async fn finish_operation(
+        &self,
+        tenant_id: TenantId,
+        operation_id: OperationId,
+        lease_token: &str,
+        state: OperationState,
+        error: Option<&str>,
+    ) -> Result<(), ApplicationError> {
+        let state = match state {
+            OperationState::Succeeded => "succeeded",
+            OperationState::Failed => "failed",
+            OperationState::Cancelled => "cancelled",
+            _ => {
+                return Err(ApplicationError::InvalidRequest {
+                    message: "operation cannot finish in this state".into(),
+                })
+            }
+        };
+        let result = sqlx::query("UPDATE operations SET state = $4, lease_token = NULL, lease_expires_at = NULL, progress = CASE WHEN $4 = 'succeeded' THEN 100 ELSE progress END, error_message = $5, updated_at = now() WHERE tenant_id = $1 AND operation_id = $2 AND lease_token = $3")
+            .bind(tenant_id.as_uuid()).bind(operation_id.as_uuid()).bind(lease_token).bind(state).bind(error)
+            .execute(&self.pool).await.map_err(|_| ApplicationError::DependencyUnavailable { dependency: "postgres" })?;
+        if result.rows_affected() == 0 {
+            return Err(ApplicationError::OperationNotFound);
+        }
+        Ok(())
     }
 }
 
