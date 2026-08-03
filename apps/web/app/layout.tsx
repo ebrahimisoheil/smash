@@ -1,7 +1,6 @@
 export const metadata = {
-  title: "ENGRAVE V2 (Phase A placeholder)",
-  description:
-    "Build-verifying placeholder — no real UI yet. See docs/roadmap/14-web-application.md.",
+  title: "ENGRAVE V2",
+  description: "Governed Memory review and source evidence.",
 };
 
 export default function RootLayout({
