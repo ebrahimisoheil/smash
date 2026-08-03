@@ -1,0 +1,142 @@
+{
+  "date_utc": "2026-08-03T15:08:42.305354+00:00",
+  "hardware": "arm64",
+  "region": "provider endpoint region not exposed",
+  "profiles": [
+    {
+      "provider": "voyage",
+      "model": "voyage-3-lite",
+      "dataset_size": 1000,
+      "batch_size": 100,
+      "concurrency": 4,
+      "maximum_resident_set_size_bytes": 104546304,
+      "batch_count": 10,
+      "batch_wall_latency_ms": 3908.093041041866,
+      "batch_latency_ms": {
+        "p50": 1349.3194375187159,
+        "p95": 1408.3408329170197,
+        "p99": 1408.3408329170197
+      },
+      "batch_throughput_items_per_second": 255.8792714242566,
+      "query_embedding_latency_ms": 286.0770830884576,
+      "authorized_exact_scoring_latency_ms": 237.2947079129517,
+      "authorized_fixture_end_to_end_latency_ms": 523.3717910014093,
+      "cache_hit_latency_ms": 0.000125030055642128,
+      "candidate_count_before_authorization": 10,
+      "result_count_after_authorization": 10,
+      "unauthorized_result_count": 0,
+      "usage": {
+        "batches": [
+          {
+            "total_tokens": 2846
+          },
+          {
+            "total_tokens": 2956
+          },
+          {
+            "total_tokens": 2956
+          },
+          {
+            "total_tokens": 2955
+          },
+          {
+            "total_tokens": 2958
+          },
+          {
+            "total_tokens": 2958
+          },
+          {
+            "total_tokens": 2956
+          },
+          {
+            "total_tokens": 2958
+          },
+          {
+            "total_tokens": 2957
+          },
+          {
+            "total_tokens": 2954
+          }
+        ],
+        "query": {
+          "total_tokens": 7
+        }
+      },
+      "ann_latency_ms": null,
+      "cost": "see provider usage and published price basis in phase-e retrieval results"
+    },
+    {
+      "provider": "openai",
+      "model": "text-embedding-3-large",
+      "dataset_size": 1000,
+      "batch_size": 100,
+      "concurrency": 4,
+      "maximum_resident_set_size_bytes": 238321664,
+      "batch_count": 10,
+      "batch_wall_latency_ms": 2129.857875057496,
+      "batch_latency_ms": {
+        "p50": 700.2035829937086,
+        "p95": 764.3371250014752,
+        "p99": 764.3371250014752
+      },
+      "batch_throughput_items_per_second": 469.51489660924193,
+      "query_embedding_latency_ms": 228.72270899824798,
+      "authorized_exact_scoring_latency_ms": 384.73958300892264,
+      "authorized_fixture_end_to_end_latency_ms": 613.4622920071706,
+      "cache_hit_latency_ms": 0.000125030055642128,
+      "candidate_count_before_authorization": 10,
+      "result_count_after_authorization": 10,
+      "unauthorized_result_count": 0,
+      "usage": {
+        "batches": [
+          {
+            "prompt_tokens": 2716,
+            "total_tokens": 2716
+          },
+          {
+            "prompt_tokens": 2716,
+            "total_tokens": 2716
+          },
+          {
+            "prompt_tokens": 2716,
+            "total_tokens": 2716
+          },
+          {
+            "prompt_tokens": 2714,
+            "total_tokens": 2714
+          },
+          {
+            "prompt_tokens": 2716,
+            "total_tokens": 2716
+          },
+          {
+            "prompt_tokens": 2716,
+            "total_tokens": 2716
+          },
+          {
+            "prompt_tokens": 2714,
+            "total_tokens": 2714
+          },
+          {
+            "prompt_tokens": 2716,
+            "total_tokens": 2716
+          },
+          {
+            "prompt_tokens": 2716,
+            "total_tokens": 2716
+          },
+          {
+            "prompt_tokens": 2714,
+            "total_tokens": 2714
+          }
+        ],
+        "query": {
+          "prompt_tokens": 7,
+          "total_tokens": 7
+        }
+      },
+      "ann_latency_ms": null,
+      "cost": "see provider usage and published price basis in phase-e retrieval results"
+    }
+  ]
+}

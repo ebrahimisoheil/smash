@@ -1,0 +1,20 @@
+{
+  "provider": "voyage-compatible",
+  "model": "voyage-3-lite",
+  "date_utc": "2026-08-03T14:20:14.330608+00:00",
+  "queries": 3,
+  "native_dimensions_observed": [512],
+  "cold_latency_ms": {
+    "p50": 297.31024999637157,
+    "min": 296.5018330141902,
+    "max": 328.8558329222724
+  },
+  "repeated_request_latency_ms": {
+    "p50": 293.05566695984453,
+    "min": 283.7203339440748,
+    "max": 369.9154999339953
+  },
+  "output_dimension_required": 1024,
+  "projection_required": true,
+  "retrieval_metrics": "not measured by provider-only harness"
+}

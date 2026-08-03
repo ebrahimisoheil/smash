@@ -1,0 +1,18 @@
+{
+  "date_utc": "2026-08-03",
+  "query_count": 100,
+  "dataset_size": 1000,
+  "dimension": 1024,
+  "algorithm": "exact-reference",
+  "p50_ms": 16.170,
+  "p95_ms": 16.659,
+  "p99_ms": 18.466,
+  "ann": {
+    "enabled": true,
+    "p50_ms": 15.143,
+    "p95_ms": 51.581,
+    "p99_ms": 186.406,
+    "index": "IVF_FLAT"
+  },
+  "note": "Local 1,000-row integration fixture with authorization filtering; not a production capacity guarantee."
+}

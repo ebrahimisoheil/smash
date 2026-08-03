@@ -26,11 +26,14 @@ pub mod memory;
 pub use memory::{AdmissionPolicy, MemoryStore, ProposalInput, ReviewAction, ReviewError};
 pub mod retrieval;
 pub use retrieval::{
-    enforce_benchmark_gate, light_search, ActorRole, AuthorizationContext, BenchmarkCase,
-    BenchmarkGateError, BenchmarkMetrics, BenchmarkThresholds, DegradedMode,
-    DeterministicEmbeddingProvider, EmbeddingProvider, EmbeddingVector, FusionMode, LexicalHit,
-    LexicalIndex, MemoryRecord, ProjectionIdentity, ProjectionStore, ReconciliationReport,
-    RetrievalError, RetrievalPacket, SearchProfile, SearchRequest,
+    enforce_benchmark_gate, light_search, retry_directive, ActorRole, AuthorizationContext,
+    BenchmarkCase, BenchmarkGateError, BenchmarkMetrics, BenchmarkThresholds, CircuitBreaker,
+    CircuitState, ConfigurationError, DegradedMode, DenseHit, DeterministicEmbeddingProvider,
+    EmbeddingConfiguration, EmbeddingProfile, EmbeddingProvider, EmbeddingVector, FusionMode,
+    LexicalHit, LexicalIndex, MemoryRecord, ProjectionAdapter, ProjectionIdentity, ProjectionStore,
+    ProviderError, QueryEmbeddingCache, ReconciliationReport, RetrievalError, RetrievalPacket,
+    RetryDirective, RetryPolicy, SearchProfile, SearchRequest, Visibility,
+    PRODUCTION_OUTPUT_DIMENSION,
 };
 
 /// Stable machine-readable application error codes. The HTTP mapping belongs
