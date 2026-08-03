@@ -1,13 +1,15 @@
-# SMASH V2 Roadmap
+# ENGRAVE V2 Roadmap
 
 > **Status:** implementation source of truth for the V2 workspace
 > **Audience:** founder, contributors, design partners, and future maintainers
 > **Scope:** Community Edition first; managed scale, SSO, and enterprise operations second
 > **Excludes:** delivery dates, sprint estimates, and file-by-file coding instructions
 
-This roadmap defines what SMASH V2 is, why it should exist, which parts of the current SMASH implementation should survive, which architectural boundaries should change, and how the new system should be built in capability phases.
+This roadmap defines what ENGRAVE V2 is, why it should exist, which parts of the current ENGRAVE implementation should survive, which architectural boundaries should change, and how the new system should be built in capability phases.
 
-It is derived from [`SMASH_V2.md`](../../../SMASH_V2.md) at the repository root, decomposed into working documents.
+It is the implementation source of truth for this repository, decomposed into
+working documents. Historical source material is maintained outside the
+repository boundary.
 
 ## Reading order
 
@@ -32,7 +34,7 @@ It is derived from [`SMASH_V2.md`](../../../SMASH_V2.md) at the repository root,
 | [09 — Retrieval architecture](09-retrieval-architecture.md) | Light search, Aggressive search, Cross-Map retrieval, ranking evaluation |
 | [10 — Rules and harness enforcement](10-rules-harness.md) | Evaluation points, effects, precedence, rule test harness |
 | [11 — Agent session contract](11-agent-session-contract.md) | The portable agent loop |
-| [12 — MCP, skills, prompts, connectors](12-mcp-skills-prompts-connectors.md) | MCP server, agent hooks, selective writes, release publication, skills, prompts, native connectors |
+| [12 — MCP, skills, prompts, connectors](12-mcp-skills-prompts-connectors.md) | MCP server and consumer, Registry, skills, prompts, native connectors |
 | [13 — API principles](13-api-principles.md) | Versioning, commands vs queries, uploads, OpenAPI |
 | [14 — Web application requirements](14-web-application.md) | Home, Areas, Library, Review, saved record, search, mobile |
 | [15 — Authentication, authorization, security](15-auth-security.md) | Authorization model, threat list, release security gates |
@@ -54,7 +56,7 @@ It is derived from [`SMASH_V2.md`](../../../SMASH_V2.md) at the repository root,
 
 ## The one-sentence positioning
 
-> Notion stores what a team writes. Jira tracks what a team does. SMASH governs what its agents remember.
+> Notion stores what a team writes. Jira tracks what a team does. ENGRAVE governs what its agents remember.
 
 ## The backend stack in one line
 

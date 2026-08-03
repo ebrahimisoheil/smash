@@ -1,6 +1,6 @@
 # 19 — Implementation Phases Without Timelines
 
-> Source: SMASH_V2.md §20
+> Source: the historical roadmap source §20
 
 **Each phase is a capability gate.** Do not begin a later phase merely because work has started; begin it when the previous phase's invariants and acceptance criteria are met.
 

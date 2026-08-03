@@ -1,6 +1,6 @@
 # 15 — Authentication, Authorization, and Security
 
-> Source: SMASH_V2.md §16
+> Source: the historical roadmap source §16
 
 ## Start with the full contract
 
@@ -10,7 +10,7 @@ Introduce tenant, actor, membership, role, Area grant, visibility, and ownership
 
 **Before public network exposure, require authentication.**
 
-Managed SMASH adds OIDC/SSO, enterprise membership, invitations, groups, SCIM or directory synchronization, service accounts, agent identities, policy and session administration. These are later **operational** capabilities — not reasons to postpone correct authorization boundaries.
+Managed ENGRAVE adds OIDC/SSO, enterprise membership, invitations, groups, SCIM or directory synchronization, service accounts, agent identities, policy and session administration. These are later **operational** capabilities — not reasons to postpone correct authorization boundaries.
 
 ## Implementation contract
 
@@ -55,7 +55,7 @@ PostgreSQL is the authority for permissions. LanceDB carries prefilter metadata 
 
 A customer Enterprise Admin may inspect its own tenant according to its policy.
 
-**A SMASH platform operator does not gain customer-content access from infrastructure privileges.**
+**A ENGRAVE platform operator does not gain customer-content access from infrastructure privileges.**
 
 Support access uses explicit **break-glass grants** with tenant, purpose, scope, approval, short expiry, and immutable access events.
 

@@ -1,6 +1,6 @@
 # 08 — Memory Write and Upsert Strategy
 
-> Source: SMASH_V2.md §9
+> Source: the historical roadmap source §9
 
 Every agent run needs a deterministic write strategy. **"Upsert" must not mean overwriting whichever semantically similar row appears first.**
 
@@ -27,11 +27,6 @@ Decision graph: [23 — Diagrams §24.6](23-diagrams.md#246-memory-proposal-and-
 **Exact duplicates do not create new logical Memory.** New evidence creates either a new version or an evidence-attachment event, depending on whether the approved claim changes.
 
 **Semantic duplicates require review** unless a strict deterministic rule applies.
-
-Review may be completed conversationally or in the UI through the shared
-admission operation. Conversational confirmation is required for forgetting,
-material supersession, sensitive or consequential Memory, and other durable
-changes whose impact the user should see before activation.
 
 **Contradictions must never coexist silently as equally active truth.** They create a conflict Review item with side-by-side evidence and applicability.
 

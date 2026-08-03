@@ -1,6 +1,6 @@
 # Phase A — Contract and Workspace Foundation
 
-> Source: SMASH_V2.md §20, Phase A
+> Source: the historical roadmap source §20, Phase A
 
 ## Goal
 

@@ -1,4 +1,4 @@
-//! Shared domain contracts for SMASH V2.
+//! Shared domain contracts for ENGRAVE V2.
 //!
 //! This crate intentionally contains wire/domain vocabulary only. It has no
 //! web framework, database driver, or async-runtime dependency.

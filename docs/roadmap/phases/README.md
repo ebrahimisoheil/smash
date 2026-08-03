@@ -1,6 +1,6 @@
 # Phases
 
-> Source: SMASH_V2.md §20
+> Source: the historical roadmap source §20
 
 Each phase is a **capability gate**, not a time box. A phase opens when the previous phase's invariants and acceptance criteria are met.
 

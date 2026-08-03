@@ -1,7 +1,7 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "SMASH V2 API",
+    "title": "ENGRAVE V2 API",
     "description": "Axum router, Tower layers, Serde models, Utoipa annotations, error mapping. The canonical HTTP surface.",
     "license": {
       "name": "UNLICENSED",
@@ -28,27 +28,20 @@
         }
       }
     },
-    "/v1/readiness": {
+    "/v1/processing-states": {
       "get": {
         "tags": [],
-        "operationId": "readiness",
+        "operationId": "processing_states",
         "responses": {
           "200": {
             "description": "",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HealthResponse"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HealthResponse"
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ProcessingState"
+                  }
                 }
               }
             }
@@ -91,6 +84,42 @@
             "type": "string"
           }
         }
+      },
+      "ProcessingState": {
+        "type": "object",
+        "required": [
+          "state",
+          "terminal",
+          "actionable"
+        ],
+        "properties": {
+          "actionable": {
+            "type": "boolean"
+          },
+          "state": {
+            "$ref": "#/components/schemas/SourceState"
+          },
+          "terminal": {
+            "type": "boolean"
+          }
+        }
+      },
+      "SourceState": {
+        "type": "string",
+        "enum": [
+          "uploaded",
+          "verified",
+          "queued",
+          "extracting",
+          "chunking",
+          "indexing",
+          "proposing",
+          "ready",
+          "partially_ready",
+          "failed",
+          "quarantined",
+          "deleted"
+        ]
       },
       "VersionResponse": {
         "type": "object",

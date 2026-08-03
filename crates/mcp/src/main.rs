@@ -1,8 +1,8 @@
-//! `smash-mcp` — the MCP adapter over `smash-core`, sharing the API's
+//! `engrave-mcp` — the MCP adapter over `engrave-core`, sharing the API's
 //! authorization path.
 //!
-use smash_contracts::TenantId;
-use smash_core::{ApplicationError, Authorization};
+use engrave_contracts::TenantId;
+use engrave_core::{ApplicationError, Authorization};
 
 struct NoopAuthorization;
 
@@ -29,5 +29,5 @@ fn authorize_tool_call(
 fn main() {
     authorize_tool_call(&NoopAuthorization, TenantId::new_v7(), "read", "memory")
         .expect("shared authorization path");
-    println!("smash-mcp: authorization path ready");
+    println!("engrave-mcp: authorization path ready");
 }

@@ -1,6 +1,6 @@
 # 09 — Retrieval Architecture
 
-> Source: SMASH_V2.md §10
+> Source: the historical roadmap source §10
 
 ## 9.1 Retrieval inputs and outputs
 
@@ -90,7 +90,7 @@ Search begins inside the active Area and permitted Shared Memory. Cross-Map expa
 
 ## 9.5 Ranking evaluation
 
-SMASH continues the V1 discipline of **measuring retrieval rather than asserting quality**. Preserve existing benchmark datasets and build V2 adapters so the new engine can be compared with V1.
+ENGRAVE continues the V1 discipline of **measuring retrieval rather than asserting quality**. Preserve existing benchmark datasets and build V2 adapters so the new engine can be compared with V1.
 
 Track at least:
 
@@ -119,7 +119,7 @@ The detailed V2 search pipeline and formulas live in:
   modifiers, reranking, token budgets, and benchmark metrics.
 
 These documents import the reusable algorithmic lessons from the legacy
-`memory-smash` project. They do not import its Python module layout, Blake3
+`memory-engrave` project. They do not import its Python module layout, Blake3
 record identity, mandatory Voyage provider, or headline benchmark numbers.
 Provider/model selection and all tuning constants remain subject to the Phase E
 benchmark gate.

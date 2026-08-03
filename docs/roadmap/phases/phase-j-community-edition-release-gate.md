@@ -1,6 +1,6 @@
 # Phase J — Community Edition Release Gate
 
-> Source: SMASH_V2.md §20, Phase J
+> Source: the historical roadmap source §20, Phase J
 
 ## The gate
 
@@ -26,7 +26,6 @@ The Community Edition is ready when a **non-maintainer** can:
 - configuration documentation;
 - SQLx migration notes;
 - MCP package and metadata (crates.io plus Registry metadata);
-- GitHub.io installation/release page with binaries, checksums, permissions, upgrade and rollback instructions;
 - skills;
 - prompts;
 - benchmark results;
@@ -40,15 +39,6 @@ The open-source release is honest about supported formats, deployment boundaries
 
 - **Do not market a single-node Compose stack as an enterprise cluster.**
 - **Do not hide essential memory governance behind managed-only services.**
-
-## MCP publication gate
-
-Release publication is complete only when the exact version is represented in
-`server.json`, Registry metadata, and the GitHub.io installation page, and a
-clean environment can follow that page to install the server and exercise the
-full loop: pre-hook recall, answer, explicit or signal-triggered proposal, and
-governed write. Registry availability must not be required for an installed
-server to recall or write.
 
 ## Forward compatibility
 

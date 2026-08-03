@@ -1,6 +1,6 @@
-use axum::{http::StatusCode, routing::get, Json, Router};
+use axum::{routing::get, Json, Router};
+use engrave_contracts::SourceState;
 use serde::Serialize;
-use smash_storage::{wait_for_tcp_endpoint, PgRepository};
 use utoipa::{OpenApi, ToSchema};
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -9,77 +9,75 @@ struct HealthResponse {
     readiness: &'static str,
 }
 
-#[derive(Clone, Debug)]
-struct RuntimeConfig {
-    database_url: String,
-    object_store_endpoint: String,
-    object_store_bucket: String,
-    port: u16,
-}
-
-impl RuntimeConfig {
-    fn from_env() -> Result<Self, String> {
-        let required = |name: &str| {
-            std::env::var(name).map_err(|_| format!("missing required configuration: {name}"))
-        };
-        Ok(Self {
-            database_url: required("SMASH_DATABASE_URL")?,
-            object_store_endpoint: required("SMASH_MINIO_ENDPOINT")?,
-            object_store_bucket: required("SMASH_MINIO_BUCKET")?,
-            port: std::env::var("SMASH_API_PORT")
-                .unwrap_or_else(|_| "3000".to_owned())
-                .parse()
-                .map_err(|_| "SMASH_API_PORT must be a valid port".to_owned())?,
-        })
-    }
-}
-
 #[derive(Debug, Serialize, ToSchema)]
 struct VersionResponse {
     service: &'static str,
     version: &'static str,
 }
 
+#[derive(Debug, Serialize, ToSchema)]
+struct ProcessingState {
+    state: SourceState,
+    terminal: bool,
+    actionable: bool,
+}
+
+#[utoipa::path(get, path = "/v1/processing-states", responses((status = 200, body = [ProcessingState])))]
+async fn processing_states() -> Json<Vec<ProcessingState>> {
+    Json(
+        vec![
+            (SourceState::Uploaded, false, true),
+            (SourceState::Verified, false, true),
+            (SourceState::Queued, false, true),
+            (SourceState::Extracting, false, true),
+            (SourceState::Chunking, false, true),
+            (SourceState::Indexing, false, true),
+            (SourceState::Proposing, false, true),
+            (SourceState::Ready, true, false),
+            (SourceState::PartiallyReady, true, true),
+            (SourceState::Failed, true, true),
+            (SourceState::Quarantined, true, true),
+            (SourceState::Deleted, true, false),
+        ]
+        .into_iter()
+        .map(|(state, terminal, actionable)| ProcessingState {
+            state,
+            terminal,
+            actionable,
+        })
+        .collect(),
+    )
+}
+
 #[utoipa::path(get, path = "/v1/health", responses((status = 200, body = HealthResponse)))]
 async fn health() -> Json<HealthResponse> {
     Json(HealthResponse {
         status: "ok",
-        readiness: "ready",
+        readiness: "not_configured",
     })
-}
-
-#[utoipa::path(get, path = "/v1/readiness", responses((status = 200, body = HealthResponse), (status = 503, body = HealthResponse)))]
-async fn readiness() -> (StatusCode, Json<HealthResponse>) {
-    (
-        StatusCode::OK,
-        Json(HealthResponse {
-            status: "ok",
-            readiness: "ready",
-        }),
-    )
 }
 
 #[utoipa::path(get, path = "/v1/version", responses((status = 200, body = VersionResponse)))]
 async fn version() -> Json<VersionResponse> {
     Json(VersionResponse {
-        service: "smash-api",
+        service: "engrave-api",
         version: env!("CARGO_PKG_VERSION"),
     })
 }
 
 #[derive(OpenApi)]
 #[openapi(
-    paths(health, readiness, version),
-    components(schemas(HealthResponse, VersionResponse)),
-    info(title = "SMASH V2 API", version = env!("CARGO_PKG_VERSION"))
+    paths(health, version, processing_states),
+    components(schemas(HealthResponse, VersionResponse, ProcessingState, SourceState)),
+    info(title = "ENGRAVE V2 API", version = env!("CARGO_PKG_VERSION"))
 )]
 struct ApiDoc;
 
 fn app() -> Router {
     Router::new()
         .route("/v1/health", get(health))
-        .route("/v1/readiness", get(readiness))
         .route("/v1/version", get(version))
+        .route("/v1/processing-states", get(processing_states))
         .route(
             "/openapi.json",
             get(|| async { ApiDoc::openapi().to_json().unwrap() }),
@@ -98,21 +96,7 @@ async fn main() {
         return;
     }
 
-    let config = RuntimeConfig::from_env().expect("invalid SMASH API configuration");
-    if std::env::args().any(|arg| arg == "--migrate") {
-        PgRepository::connect_and_migrate(&config.database_url)
-            .await
-            .expect("PostgreSQL is not ready or migrations failed");
-        return;
-    }
-    let _repository = PgRepository::connect(&config.database_url)
-        .await
-        .expect("PostgreSQL is not ready");
-    wait_for_tcp_endpoint(&config.object_store_endpoint, 20)
-        .await
-        .expect("MinIO is not ready");
-    assert!(!config.object_store_bucket.is_empty());
-    let listener = tokio::net::TcpListener::bind(("0.0.0.0", config.port))
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:3000")
         .await
         .expect("bind API listener");
     axum::serve(listener, app())
@@ -142,6 +126,16 @@ mod tests {
         let response = app()
             .oneshot(
                 Request::builder()
+                    .uri("/v1/processing-states")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), 200);
+        let response = app()
+            .oneshot(
+                Request::builder()
                     .uri("/v1/version")
                     .body(Body::empty())
                     .unwrap(),
@@ -156,6 +150,6 @@ mod tests {
         let json = ApiDoc::openapi().to_json().unwrap();
         assert!(json.contains("/v1/health"));
         assert!(json.contains("/v1/version"));
-        assert!(json.contains("/v1/readiness"));
+        assert!(json.contains("/v1/processing-states"));
     }
 }

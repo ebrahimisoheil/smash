@@ -1,6 +1,6 @@
 # 24 — Primary Technical References
 
-> Source: SMASH_V2.md §25
+> Source: the historical roadmap source §25
 
 **The implementation verifies behavior against current upstream documentation rather than copying examples from secondary tutorials.**
 
@@ -46,7 +46,7 @@
 
 ## V1 behavioral reference
 
-The existing SMASH repository remains the behavioral reference for V1 contracts:
+The existing ENGRAVE repository remains the behavioral reference for V1 contracts:
 
 - [`README.md`](../../../README.md)
 - [`ARCHITECTURE.md`](../../../ARCHITECTURE.md)
@@ -58,4 +58,4 @@ The existing SMASH repository remains the behavioral reference for V1 contracts:
 
 ## Source document
 
-- [`SMASH_V2.md`](../../../SMASH_V2.md) — the original combined V2 document from which this roadmap is derived.
+- Historical roadmap source — the original combined V2 document from which this roadmap was derived; it is maintained outside this repository.

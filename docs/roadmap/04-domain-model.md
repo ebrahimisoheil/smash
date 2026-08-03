@@ -1,6 +1,6 @@
 # 04 — Core Domain Model
 
-> Source: SMASH_V2.md §5
+> Source: the historical roadmap source §5
 
 ## 4.1 Enterprise tenant and Memory environment
 
@@ -9,9 +9,9 @@ An **Enterprise tenant** is the customer organization and primary ownership boun
 - A tenant is identified by an opaque, immutable `tenant_id`.
 - A human-readable slug is **presentation metadata** and must never be the security boundary.
 
-The Enterprise tenant is different from the SMASH platform. An Acme Enterprise Admin may be authorized to oversee all Acme data, while a SMASH platform operator has **no automatic right** to read Acme content. Unified infrastructure means shared operational services, not shared human visibility.
+The Enterprise tenant is different from the ENGRAVE platform. An Acme Enterprise Admin may be authorized to oversee all Acme data, while a ENGRAVE platform operator has **no automatic right** to read Acme content. Unified infrastructure means shared operational services, not shared human visibility.
 
-Community Edition operates as one built-in tenant with one initial Enterprise Admin. The same tenant, role, and placement contracts exist from the beginning so Community Edition data can move to managed SMASH **without changing identifiers or meaning**.
+Community Edition operates as one built-in tenant with one initial Enterprise Admin. The same tenant, role, and placement contracts exist from the beginning so Community Edition data can move to managed ENGRAVE **without changing identifiers or meaning**.
 
 ## 4.2 Enterprise roles and memberships
 
@@ -24,7 +24,7 @@ Enterprise access is role- and Area-based. Minimum role model:
 | **Area Admin** | Administers content, Map versions, Rules, review, and traces inside assigned Areas |
 | **Normal User** | Uses assigned Areas, adds Sources, searches permitted Memory, reviews assigned Proposals, inspects permitted activity |
 | **Agent or service identity** | Receives explicit machine scopes for Areas, Source classes, retrieval, proposals, and tools |
-| **SMASH platform operator** | Maintains infrastructure; has **no default customer-content permission** |
+| **ENGRAVE platform operator** | Maintains infrastructure; has **no default customer-content permission** |
 
 An enterprise may configure exceptional private Areas that remain restricted from ordinary enterprise-wide administrators — a customer policy decision. The architecture must support a customer-controlled `read_all_tenant_content` capability as well as explicit exclusions.
 
@@ -197,21 +197,6 @@ The immutable **decision envelope** is the minimum information required to recon
 Large or sensitive bodies live as encrypted MinIO snapshots referenced by hash and classification; PostgreSQL stores the canonical relationships and queryable dimensions.
 
 An **outcome** links an AI decision or tool action to what occurred in the application or business workflow: accepted recommendation, changed CRM record, published campaign, blocked disclosure, won opportunity, human correction or reversal.
-
-### Long-running agent processes
-
-A long-running agent process is a durable product workflow, not an unbounded
-chat transcript. It has an Operation/Job for execution state, an AI Run for
-agent task and governance context, checkpoints for safe resume, Events for
-important actions, and Sources/Artifacts for retained evidence. The user can
-inspect progress, pause, resume, cancel, or revoke the process.
-
-The process may save useful evidence and checkpoints during execution, but it
-does not silently turn every observation into Memory. Reusable facts,
-preferences, decisions, workflows, Map changes, and Rules follow the relevant
-proposal, confirmation, and Rule/Harness policy for their Area. A personal
-Area may permit explicit agent proposal → user confirmation → durable write;
-shared and Cross-Map changes remain more strictly governed.
 
 These links make future analytics about actual AI behavior possible instead of limiting observability to tokens and latency.
 

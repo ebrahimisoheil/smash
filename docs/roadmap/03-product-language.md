@@ -1,6 +1,6 @@
 # 03 — Product Language
 
-> Source: SMASH_V2.md §4
+> Source: the historical roadmap source §4
 
 Technical internal terms may remain precise, but **user-facing language must be understandable without knowledge-management training**.
 

@@ -1,5 +1,5 @@
 [package]
-name = "smash-storage"
+name = "engrave-storage"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -11,8 +11,8 @@ description = "SQLx, MinIO (S3), and LanceDB adapters implementing core's ports.
 async-trait = "0.1.91"
 aws-sdk-s3 = { version = "1.122.0", default-features = false, features = ["rt-tokio", "http-1x", "sigv4a", "default-https-client"] }
 lancedb = "0.26.2"
-smash-contracts = { path = "../contracts" }
-smash-core = { path = "../core" }
-sqlx = { version = "0.8.6", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "uuid", "time", "migrate", "macros", "json"] }
-tokio = { version = "1.53.1", features = ["net", "time"] }
+serde_json = "1.0.145"
+engrave-contracts = { path = "../contracts" }
+engrave-core = { path = "../core" }
+sqlx = { version = "0.8.6", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "uuid", "time", "migrate", "json"] }
 uuid = { version = "1.24.0", features = ["v7"] }

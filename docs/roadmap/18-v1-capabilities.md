@@ -1,6 +1,6 @@
 # 18 — V1 Capabilities to Preserve or Reuse
 
-> Source: SMASH_V2.md §19
+> Source: the historical roadmap source §19
 
 **V1 is not discarded. Its strongest features become V2 acceptance fixtures.**
 

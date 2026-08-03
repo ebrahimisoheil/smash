@@ -1,5 +1,5 @@
 [package]
-name = "smash-api"
+name = "engrave-api"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -15,9 +15,9 @@ path = "src/main.rs"
 axum = "0.8.9"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
-smash-contracts = { path = "../contracts" }
-smash-core = { path = "../core" }
-smash-storage = { path = "../storage" }
+engrave-contracts = { path = "../contracts" }
+engrave-core = { path = "../core" }
+engrave-storage = { path = "../storage" }
 tokio = { version = "1.53.1", features = ["rt-multi-thread", "macros", "signal"] }
 tower = "0.5.3"
 tower-http = { version = "0.7.0", features = ["trace", "compression-full", "cors", "request-id"] }

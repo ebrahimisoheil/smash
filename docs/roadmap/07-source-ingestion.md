@@ -1,6 +1,6 @@
 # 07 — Source Ingestion
 
-> Source: SMASH_V2.md §8
+> Source: the historical roadmap source §8
 
 ## 7.1 Supported source classes
 

@@ -1,4 +1,4 @@
-# SMASH V2 Documentation
+# ENGRAVE V2 Documentation
 
 | Area | Location | Purpose |
 |---|---|---|

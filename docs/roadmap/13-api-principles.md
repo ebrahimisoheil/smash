@@ -1,6 +1,6 @@
 # 13 — API Principles
 
-> Source: SMASH_V2.md §14
+> Source: the historical roadmap source §14
 
 ## Shape
 

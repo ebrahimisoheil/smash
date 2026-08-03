@@ -1,6 +1,6 @@
 # 14 — Web Application Requirements
 
-> Source: SMASH_V2.md §15
+> Source: the historical roadmap source §15
 
 ## 14.1 Home
 
