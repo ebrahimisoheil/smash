@@ -27,6 +27,8 @@ services:
     volumes:
       - ./migrations/20260802120000_initial_schema.sql:/migrations/001_initial_schema.sql:ro
       - ./migrations/20260803100000_phase_c_pipeline.sql:/migrations/002_phase_c_pipeline.sql:ro
+      - ./migrations/20260804100000_phase_d_memory_review.sql:/migrations/003_phase_d_memory_review.sql:ro
+      - ./migrations/20260805100000_phase_e_retrieval.sql:/migrations/004_phase_e_retrieval.sql:ro
     entrypoint: ["/bin/sh", "-c"]
     command:
       - >-
@@ -34,6 +36,10 @@ services:
         --dbname=${POSTGRES_DB} --file=/migrations/001_initial_schema.sql
         && psql --host=postgres --username=${POSTGRES_USER}
         --dbname=${POSTGRES_DB} --file=/migrations/002_phase_c_pipeline.sql
+        && psql --host=postgres --username=${POSTGRES_USER}
+        --dbname=${POSTGRES_DB} --file=/migrations/003_phase_d_memory_review.sql
+        && psql --host=postgres --username=${POSTGRES_USER}
+        --dbname=${POSTGRES_DB} --file=/migrations/004_phase_e_retrieval.sql
 
   minio:
     image: minio/minio:RELEASE.2025-02-28T09-55-16Z
