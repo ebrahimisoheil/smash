@@ -1,5 +1,7 @@
 # Rust/Cargo build output
 /target/
+/apps/web/.next/
+/apps/web/node_modules/
 
 # Local environment and credentials
 .env
