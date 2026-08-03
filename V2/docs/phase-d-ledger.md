@@ -60,4 +60,4 @@ recorded below.
   `/review` statically generated. `npm audit` reports 3 high-severity package
   findings; no dependency upgrade was included in Phase D.
 
-**Commit reference:** `e440806a` (`Implement Phase D governed Memory review lifecycle`).
+**Commit reference:** `b37f88f2` (`Implement Phase D governed Memory review lifecycle`).
