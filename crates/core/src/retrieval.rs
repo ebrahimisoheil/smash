@@ -552,6 +552,39 @@ impl QueryEmbeddingCache {
     }
 }
 
+/// Builds a `QueryEmbeddingCache` key that fully identifies what was
+/// embedded and how: provider, model, model version, input type (e.g.
+/// `"query"` — Light Search only ever embeds the query text, never a
+/// document, but the input type is still part of the key so this cache
+/// could not silently conflate the two if it were ever reused for
+/// document-side embedding), projection version, and configuration
+/// fingerprint, so two different provider/profile identities never
+/// collide. The query text itself is normalized (whitespace-collapsed,
+/// lowercased) so two requests differing only in casing or incidental
+/// whitespace share one cache entry — and so the cache never stores the
+/// literal, unnormalized user input as its key material.
+pub fn query_embedding_cache_key(
+    identity: &ProjectionIdentity,
+    input_type: &str,
+    query: &str,
+) -> String {
+    let normalized_query = query
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_lowercase();
+    format!(
+        "{}:{}:{}:{}:{}:{}:{}",
+        identity.provider,
+        identity.model,
+        identity.model_version,
+        input_type,
+        identity.projection_version,
+        identity.configuration_fingerprint,
+        normalized_query
+    )
+}
+
 impl CircuitBreaker {
     pub fn new(failure_threshold: u32, cooldown_ms: u64) -> Self {
         Self {
@@ -1656,6 +1689,60 @@ mod tests {
         cache.insert("other-provider:model:version:query-c", vector);
         assert_eq!(cache.len(), 2);
         assert!(cache.get("provider:model:version:query-b").is_some());
+    }
+
+    #[test]
+    fn query_embedding_cache_key_normalizes_and_isolates_by_full_identity() {
+        let identity =
+            ProjectionIdentity::new("voyage-compatible", "voyage-3-lite", "1", 2, "v1", "fp-a")
+                .unwrap();
+
+        // Same identity, same query (modulo casing/whitespace) -> same key,
+        // so a real cache hit occurs on the second lookup.
+        let key_a = query_embedding_cache_key(&identity, "query", "Renewal Security");
+        let key_a_normalized =
+            query_embedding_cache_key(&identity, "query", "  renewal   security  ");
+        assert_eq!(key_a, key_a_normalized);
+
+        let mut cache = QueryEmbeddingCache::new(4);
+        let vector = EmbeddingVector::normalized(vec![1.0, 0.0], identity.dimension).unwrap();
+        cache.insert(key_a.clone(), vector.clone());
+        assert!(
+            cache.get(&key_a_normalized).is_some(),
+            "normalized query must hit the same cache entry"
+        );
+
+        // A different query text is a genuine cache miss.
+        let different_query_key = query_embedding_cache_key(&identity, "query", "different query");
+        assert!(cache.get(&different_query_key).is_none());
+
+        // Profile isolation: identical query text, different provider ->
+        // different key, never collides.
+        let other_provider =
+            ProjectionIdentity::new("openai-compatible", "voyage-3-lite", "1", 2, "v1", "fp-a")
+                .unwrap();
+        assert_ne!(
+            key_a,
+            query_embedding_cache_key(&other_provider, "query", "Renewal Security")
+        );
+
+        // Profile isolation: identical provider/model, different projection
+        // version -> different key (a re-projection must never reuse a
+        // stale vector cached under the old projection).
+        let other_projection =
+            ProjectionIdentity::new("voyage-compatible", "voyage-3-lite", "1", 2, "v2", "fp-a")
+                .unwrap();
+        assert_ne!(
+            key_a,
+            query_embedding_cache_key(&other_projection, "query", "Renewal Security")
+        );
+
+        // Input type is part of the key even though Light Search only ever
+        // uses "query" today.
+        assert_ne!(
+            key_a,
+            query_embedding_cache_key(&identity, "document", "Renewal Security")
+        );
     }
 
     fn mapping(

@@ -55,6 +55,12 @@ struct AppState {
     embedding_cache: Arc<Mutex<QueryEmbeddingCache>>,
     embedding_circuit: Arc<Mutex<CircuitBreaker>>,
     embedding_concurrency: Arc<tokio::sync::Semaphore>,
+    /// Built once at startup, never per request. `reqwest::Client` holds its
+    /// own internal connection pool, so constructing a new client per
+    /// request would also throw away HTTP keep-alive/TLS session reuse on
+    /// every single search.
+    voyage_client: Option<Arc<VoyageEmbeddingClient>>,
+    openai_client: Option<Arc<OpenAiEmbeddingClient>>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -575,40 +581,18 @@ fn record_provider_failure(state: &AppState) {
     }
 }
 
-#[utoipa::path(
-    post,
-    path = "/v1/search",
-    request_body = SearchRequest,
-    responses((status = 200, body = SearchResponse))
-)]
-async fn search(
-    State(state): State<AppState>,
-    headers: HeaderMap,
-    Json(input): Json<SearchRequest>,
-) -> Result<Json<SearchResponse>, axum::http::StatusCode> {
-    let (tenant_id, actor_id, requested_areas, purpose) = retrieval_headers(&headers)?;
-    let repository = state
-        .repository
-        .clone()
-        .ok_or(axum::http::StatusCode::SERVICE_UNAVAILABLE)?;
-    let authorization = repository
-        .resolve_search_authorization(tenant_id.into(), actor_id, &requested_areas, purpose)
-        .await
-        .map_err(|error| match error {
-            engrave_core::ApplicationError::Forbidden => axum::http::StatusCode::FORBIDDEN,
-            _ => axum::http::StatusCode::SERVICE_UNAVAILABLE,
-        })?;
-    let request = CoreSearchRequest {
-        authorization,
-        query: input.query,
-        now: OffsetDateTime::now_utc(),
-        token_budget: input.token_budget,
-        entry_limit: input.entry_limit,
-    };
-    let lexical = repository
-        .search_lexical(&request)
-        .await
-        .map_err(|_| axum::http::StatusCode::SERVICE_UNAVAILABLE)?;
+/// Resolves dense (vector) search hits for one request, or degrades to
+/// `DegradedMode::LexicalOnly` with an explanatory reason on any failure —
+/// missing provider configuration, a closed circuit breaker, a timed-out
+/// concurrency permit, an unreachable provider, or an invalid response. It
+/// never returns `Err`, so a caller running it concurrently with lexical
+/// retrieval (see `search` below) can never have the embedding branch fail
+/// or delay the lexical branch's own result.
+async fn resolve_dense_hits(
+    state: &AppState,
+    repository: &PgRepository,
+    request: &CoreSearchRequest,
+) -> (Vec<DenseHit>, DegradedMode) {
     let mut dense = Vec::new();
     let mut degraded = DegradedMode::LexicalOnly {
         reason: "no embedding provider configured; lexical fallback".into(),
@@ -639,139 +623,191 @@ async fn search(
             reason: "embedding provider circuit is open; lexical fallback".into(),
         };
     }
-    if let (Some(lance), Ok(profile_name), true) = (
+    let Ok((lance, profile_name)) = (match (
         state.lance.clone(),
         std::env::var("ENGRAVE_EMBEDDING_PROFILE"),
         (deterministic_profile || provider_allowed) && embedding_permit.is_some(),
     ) {
-        let identity = if profile_name == "deterministic-dev" {
-            ProjectionIdentity::new("deterministic", "dev-fallback", "1", 32, "v1", "dev-only")
-                .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)?
-        } else {
-            EmbeddingConfiguration::production_candidates()
-                .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)?
-                .profile(&profile_name)
-                .map_err(|_| axum::http::StatusCode::SERVICE_UNAVAILABLE)?
-                .identity()
-                .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)?
-        };
-        let cache_key = format!(
-            "{}:{}:{}:{}:{}",
-            profile_name,
-            identity.model,
-            identity.model_version,
-            identity.configuration_fingerprint,
-            request.query
-        );
-        let cached_query = state
-            .embedding_cache
-            .lock()
-            .ok()
-            .and_then(|cache| cache.get(&cache_key));
-        if let Some(query_vector) = cached_query {
+        (Some(lance), Ok(profile_name), true) => Ok((lance, profile_name)),
+        _ => Err(()),
+    }) else {
+        return (dense, degraded);
+    };
+    let identity_result: Result<ProjectionIdentity, String> = if profile_name == "deterministic-dev"
+    {
+        ProjectionIdentity::new("deterministic", "dev-fallback", "1", 32, "v1", "dev-only")
+            .map_err(|error| format!("{error:?}"))
+    } else {
+        EmbeddingConfiguration::production_candidates()
+            .map_err(|error| format!("{error:?}"))
+            .and_then(|configuration| {
+                configuration
+                    .profile(&profile_name)
+                    .map_err(|error| format!("{error:?}"))
+                    .and_then(|profile| profile.identity().map_err(|error| format!("{error:?}")))
+            })
+    };
+    let identity = match identity_result {
+        Ok(identity) => identity,
+        Err(error) => {
+            return (
+                dense,
+                DegradedMode::LexicalOnly {
+                    reason: format!("embedding profile '{profile_name}' is misconfigured: {error}"),
+                },
+            );
+        }
+    };
+    let cache_key = engrave_core::query_embedding_cache_key(&identity, "query", &request.query);
+    let cached_query = state
+        .embedding_cache
+        .lock()
+        .ok()
+        .and_then(|cache| cache.get(&cache_key));
+    if let Some(query_vector) = cached_query {
+        if let Ok(rehydrated) =
+            dense_hits(repository, &lance, request, &query_vector, &identity).await
+        {
+            dense = rehydrated;
+            degraded = DegradedMode::None;
+        }
+    } else if profile_name == "deterministic-dev" {
+        let provider = DeterministicEmbeddingProvider::new(identity.clone());
+        if let Ok(query_vector) = provider.embed(&request.query) {
+            if let Ok(mut cache) = state.embedding_cache.lock() {
+                cache.insert(cache_key.clone(), query_vector.clone());
+            }
             if let Ok(rehydrated) =
-                dense_hits(&repository, &lance, &request, &query_vector, &identity).await
+                dense_hits(repository, &lance, request, &query_vector, &identity).await
             {
                 dense = rehydrated;
                 degraded = DegradedMode::None;
             }
-        } else if profile_name == "deterministic-dev" {
-            let provider = DeterministicEmbeddingProvider::new(identity.clone());
-            if let Ok(query_vector) = provider.embed(&request.query) {
-                if let Ok(mut cache) = state.embedding_cache.lock() {
-                    cache.insert(cache_key.clone(), query_vector.clone());
-                }
-                if let Ok(rehydrated) =
-                    dense_hits(&repository, &lance, &request, &query_vector, &identity).await
-                {
-                    dense = rehydrated;
-                    degraded = DegradedMode::None;
-                }
-            }
-        } else if profile_name == "voyage-3-lite" {
-            match VoyageEmbeddingClient::from_env() {
-                Ok(client) => match client.embed_projected(&request.query, &identity).await {
-                    Ok(values) => match EmbeddingVector::normalized(values, identity.dimension) {
-                        Ok(query_vector) => {
-                            record_provider_success(&state);
-                            if let Ok(mut cache) = state.embedding_cache.lock() {
-                                cache.insert(cache_key.clone(), query_vector.clone());
-                            }
-                            if let Ok(rehydrated) =
-                                dense_hits(&repository, &lance, &request, &query_vector, &identity)
-                                    .await
-                            {
-                                dense = rehydrated;
-                                degraded = DegradedMode::None;
-                            }
-                        }
-                        Err(_) => {
-                            record_provider_failure(&state);
-                            degraded = DegradedMode::LexicalOnly {
-                                reason: "Voyage projection produced an invalid vector".into(),
-                            }
-                        }
-                    },
-                    Err(error) => {
-                        record_provider_failure(&state);
-                        degraded = DegradedMode::LexicalOnly {
-                            reason: format!("Voyage provider degraded: {error:?}"),
-                        }
-                    }
-                },
-                Err(error) => {
-                    record_provider_failure(&state);
-                    degraded = DegradedMode::LexicalOnly {
-                        reason: format!("Voyage provider configuration unavailable: {error:?}"),
-                    }
-                }
-            }
-        } else if profile_name == "openai-large" {
-            match OpenAiEmbeddingClient::from_env() {
-                Ok(client) => match client.embed_projected(&request.query, &identity).await {
-                    Ok(values) => match EmbeddingVector::normalized(values, identity.dimension) {
-                        Ok(query_vector) => {
-                            record_provider_success(&state);
-                            if let Ok(mut cache) = state.embedding_cache.lock() {
-                                cache.insert(cache_key.clone(), query_vector.clone());
-                            }
-                            if let Ok(rehydrated) =
-                                dense_hits(&repository, &lance, &request, &query_vector, &identity)
-                                    .await
-                            {
-                                dense = rehydrated;
-                                degraded = DegradedMode::None;
-                            }
-                        }
-                        Err(_) => {
-                            record_provider_failure(&state);
-                            degraded = DegradedMode::LexicalOnly {
-                                reason: "OpenAI projection produced an invalid vector".into(),
-                            }
-                        }
-                    },
-                    Err(error) => {
-                        record_provider_failure(&state);
-                        degraded = DegradedMode::LexicalOnly {
-                            reason: format!("OpenAI provider degraded: {error:?}"),
-                        }
-                    }
-                },
-                Err(error) => {
-                    record_provider_failure(&state);
-                    degraded = DegradedMode::LexicalOnly {
-                        reason: format!("OpenAI provider configuration unavailable: {error:?}"),
-                    }
-                }
-            }
-        } else {
-            degraded = DegradedMode::LexicalOnly {
-                reason: format!(
-                    "provider profile '{profile_name}' requires its configured provider adapter"
-                ),
-            };
         }
+    } else if profile_name == "voyage-3-lite" {
+        match state.voyage_client.clone() {
+            Some(client) => match client.embed_projected(&request.query, &identity).await {
+                Ok(values) => match EmbeddingVector::normalized(values, identity.dimension) {
+                    Ok(query_vector) => {
+                        record_provider_success(state);
+                        if let Ok(mut cache) = state.embedding_cache.lock() {
+                            cache.insert(cache_key.clone(), query_vector.clone());
+                        }
+                        if let Ok(rehydrated) =
+                            dense_hits(repository, &lance, request, &query_vector, &identity).await
+                        {
+                            dense = rehydrated;
+                            degraded = DegradedMode::None;
+                        }
+                    }
+                    Err(_) => {
+                        record_provider_failure(state);
+                        degraded = DegradedMode::LexicalOnly {
+                            reason: "Voyage projection produced an invalid vector".into(),
+                        }
+                    }
+                },
+                Err(error) => {
+                    record_provider_failure(state);
+                    degraded = DegradedMode::LexicalOnly {
+                        reason: format!("Voyage provider degraded: {error:?}"),
+                    }
+                }
+            },
+            None => {
+                degraded = DegradedMode::LexicalOnly {
+                    reason: "Voyage provider configuration unavailable".into(),
+                }
+            }
+        }
+    } else if profile_name == "openai-large" {
+        match state.openai_client.clone() {
+            Some(client) => match client.embed_projected(&request.query, &identity).await {
+                Ok(values) => match EmbeddingVector::normalized(values, identity.dimension) {
+                    Ok(query_vector) => {
+                        record_provider_success(state);
+                        if let Ok(mut cache) = state.embedding_cache.lock() {
+                            cache.insert(cache_key.clone(), query_vector.clone());
+                        }
+                        if let Ok(rehydrated) =
+                            dense_hits(repository, &lance, request, &query_vector, &identity).await
+                        {
+                            dense = rehydrated;
+                            degraded = DegradedMode::None;
+                        }
+                    }
+                    Err(_) => {
+                        record_provider_failure(state);
+                        degraded = DegradedMode::LexicalOnly {
+                            reason: "OpenAI projection produced an invalid vector".into(),
+                        }
+                    }
+                },
+                Err(error) => {
+                    record_provider_failure(state);
+                    degraded = DegradedMode::LexicalOnly {
+                        reason: format!("OpenAI provider degraded: {error:?}"),
+                    }
+                }
+            },
+            None => {
+                degraded = DegradedMode::LexicalOnly {
+                    reason: "OpenAI provider configuration unavailable".into(),
+                }
+            }
+        }
+    } else {
+        degraded = DegradedMode::LexicalOnly {
+            reason: format!(
+                "provider profile '{profile_name}' requires its configured provider adapter"
+            ),
+        };
     }
+    (dense, degraded)
+}
+
+#[utoipa::path(
+    post,
+    path = "/v1/search",
+    request_body = SearchRequest,
+    responses((status = 200, body = SearchResponse))
+)]
+async fn search(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(input): Json<SearchRequest>,
+) -> Result<Json<SearchResponse>, axum::http::StatusCode> {
+    let (tenant_id, actor_id, requested_areas, purpose) = retrieval_headers(&headers)?;
+    let repository = state
+        .repository
+        .clone()
+        .ok_or(axum::http::StatusCode::SERVICE_UNAVAILABLE)?;
+    let authorization = repository
+        .resolve_search_authorization(tenant_id.into(), actor_id, &requested_areas, purpose)
+        .await
+        .map_err(|error| match error {
+            engrave_core::ApplicationError::Forbidden => axum::http::StatusCode::FORBIDDEN,
+            _ => axum::http::StatusCode::SERVICE_UNAVAILABLE,
+        })?;
+    let request = CoreSearchRequest {
+        authorization,
+        query: input.query,
+        now: OffsetDateTime::now_utc(),
+        token_budget: input.token_budget,
+        entry_limit: input.entry_limit,
+    };
+    // Lexical retrieval and query embedding are independent until fusion —
+    // run them concurrently rather than paying their latencies back to
+    // back. `resolve_dense_hits` never returns `Err`: every failure path
+    // (missing provider, closed circuit, timed-out permit, invalid
+    // response) degrades to `DegradedMode::LexicalOnly` instead, so a
+    // failed or slow embedding branch can never fail or block the lexical
+    // branch's own result.
+    let (lexical_result, (dense, degraded)) = tokio::join!(
+        repository.search_lexical(&request),
+        resolve_dense_hits(&state, &repository, &request),
+    );
+    let lexical = lexical_result.map_err(|_| axum::http::StatusCode::SERVICE_UNAVAILABLE)?;
     let packet = light_search(
         &request,
         &lexical,
@@ -871,6 +907,8 @@ fn app_with_retrieval(
         embedding_cache: Arc::new(Mutex::new(QueryEmbeddingCache::new(512))),
         embedding_circuit: Arc::new(Mutex::new(CircuitBreaker::new(3, 1_000))),
         embedding_concurrency: Arc::new(tokio::sync::Semaphore::new(8)),
+        voyage_client: VoyageEmbeddingClient::from_env().ok().map(Arc::new),
+        openai_client: OpenAiEmbeddingClient::from_env().ok().map(Arc::new),
     };
     Router::new()
         .route("/v1/health", get(health))

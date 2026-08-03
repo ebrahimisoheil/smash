@@ -43,15 +43,15 @@ pub use cross_map::{
 };
 pub mod retrieval;
 pub use retrieval::{
-    enforce_benchmark_gate, expand_cross_map_candidates, light_search, retry_directive, ActorRole,
-    AuthorizationContext, BenchmarkCase, BenchmarkGateError, BenchmarkMetrics, BenchmarkThresholds,
-    CircuitBreaker, CircuitState, ConfigurationError, CrossMapExpansionBudget,
-    CrossMapExpansionSource, DegradedMode, DenseHit, DeterministicEmbeddingProvider,
-    EmbeddingConfiguration, EmbeddingProfile, EmbeddingProvider, EmbeddingVector, FusionMode,
-    LexicalHit, LexicalIndex, MemoryRecord, ProjectionAdapter, ProjectionIdentity, ProjectionStore,
-    ProviderError, QueryEmbeddingCache, ReconciliationReport, RetrievalError, RetrievalPacket,
-    RetryDirective, RetryPolicy, SearchProfile, SearchRequest, Visibility,
-    PRODUCTION_OUTPUT_DIMENSION,
+    enforce_benchmark_gate, expand_cross_map_candidates, light_search, query_embedding_cache_key,
+    retry_directive, ActorRole, AuthorizationContext, BenchmarkCase, BenchmarkGateError,
+    BenchmarkMetrics, BenchmarkThresholds, CircuitBreaker, CircuitState, ConfigurationError,
+    CrossMapExpansionBudget, CrossMapExpansionSource, DegradedMode, DenseHit,
+    DeterministicEmbeddingProvider, EmbeddingConfiguration, EmbeddingProfile, EmbeddingProvider,
+    EmbeddingVector, FusionMode, LexicalHit, LexicalIndex, MemoryRecord, ProjectionAdapter,
+    ProjectionIdentity, ProjectionStore, ProviderError, QueryEmbeddingCache, ReconciliationReport,
+    RetrievalError, RetrievalPacket, RetryDirective, RetryPolicy, SearchProfile, SearchRequest,
+    Visibility, PRODUCTION_OUTPUT_DIMENSION,
 };
 
 /// Stable machine-readable application error codes. The HTTP mapping belongs
