@@ -3,14 +3,15 @@
 //! process observations into durable Memory.
 
 use engrave_contracts::{OperationState, TenantId};
-use engrave_core::process_text;
-use engrave_storage::PgRepository;
+use engrave_core::{process_text, EmbeddingConfiguration, ProjectionIdentity};
+use engrave_storage::{LanceProjectionAdapter, PgRepository};
 use std::time::Duration;
 use uuid::Uuid;
 
 const LEASE_SECONDS: i64 = 60;
 const MAX_BYTES: usize = 10 * 1024 * 1024;
 const MAX_CHUNKS: usize = 10_000;
+const RETRIEVAL_DIMENSION: usize = 32;
 
 fn env_tenant() -> Result<TenantId, String> {
     let value = std::env::var("ENGRAVE_TENANT_ID")
@@ -20,7 +21,11 @@ fn env_tenant() -> Result<TenantId, String> {
         .map_err(|_| "ENGRAVE_TENANT_ID must be a UUID".to_owned())
 }
 
-async fn process_once(repository: &PgRepository, tenant_id: TenantId) -> Result<bool, String> {
+async fn process_once(
+    repository: &PgRepository,
+    tenant_id: TenantId,
+    lance: Option<&LanceProjectionAdapter>,
+) -> Result<bool, String> {
     let lease_token = format!("worker-{}", Uuid::now_v7());
     let Some(lease) = repository
         .claim_operation(tenant_id, &lease_token, LEASE_SECONDS)
@@ -29,7 +34,116 @@ async fn process_once(repository: &PgRepository, tenant_id: TenantId) -> Result<
     else {
         return Ok(false);
     };
+    repository
+        .renew_operation(tenant_id, lease.operation_id, &lease_token, LEASE_SECONDS)
+        .await
+        .map_err(|e| e.to_string())?;
     let payload = lease.payload;
+    let operation_kind = payload.get("kind").and_then(|value| value.as_str());
+    if matches!(
+        operation_kind,
+        Some("embedding")
+            | Some("re-embedding")
+            | Some("index")
+            | Some("rebuild")
+            | Some("reconcile")
+    ) {
+        let Some(lance) = lance else {
+            repository
+                .fail_operation(
+                    tenant_id,
+                    lease.operation_id,
+                    &lease_token,
+                    "retrieval.lancedb_unavailable",
+                    "retrieval operation requires the worker LanceDB writer",
+                )
+                .await
+                .map_err(|error| error.to_string())?;
+            return Ok(true);
+        };
+        if repository
+            .is_cancel_requested(tenant_id, lease.operation_id)
+            .await
+            .map_err(|error| error.to_string())?
+        {
+            repository
+                .finish_operation(
+                    tenant_id,
+                    lease.operation_id,
+                    &lease_token,
+                    OperationState::Cancelled,
+                    Some("retrieval operation cancelled before reconciliation"),
+                )
+                .await
+                .map_err(|error| error.to_string())?;
+            return Ok(true);
+        }
+        repository
+            .save_checkpoint(
+                tenant_id,
+                lease.operation_id,
+                &lease_token,
+                "retrieval-reconciliation-started",
+                &serde_json::json!({"kind": operation_kind, "profile": std::env::var("ENGRAVE_EMBEDDING_PROFILE").ok()}),
+                10,
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+        match reconcile_retrieval_projection(repository, lance, tenant_id).await {
+            Ok(()) => {
+                if std::env::var("ENGRAVE_RETRIEVAL_INDEX").as_deref() == Ok("ann") {
+                    if let Err(error) = lance.build_ann_index().await {
+                        let message = error.to_string();
+                        repository
+                            .fail_operation(
+                                tenant_id,
+                                lease.operation_id,
+                                &lease_token,
+                                "retrieval.ann_index_failed",
+                                &message,
+                            )
+                            .await
+                            .map_err(|error| error.to_string())?;
+                        return Ok(true);
+                    }
+                }
+                repository
+                    .save_checkpoint(
+                        tenant_id,
+                        lease.operation_id,
+                        &lease_token,
+                        "retrieval-reconciliation-complete",
+                        &serde_json::json!({"kind": operation_kind}),
+                        100,
+                    )
+                    .await
+                    .map_err(|error| error.to_string())?;
+                repository
+                    .finish_operation(
+                        tenant_id,
+                        lease.operation_id,
+                        &lease_token,
+                        OperationState::Succeeded,
+                        None,
+                    )
+                    .await
+                    .map_err(|error| error.to_string())?;
+            }
+            Err(error) => {
+                repository
+                    .fail_operation(
+                        tenant_id,
+                        lease.operation_id,
+                        &lease_token,
+                        "retrieval.reconciliation_failed",
+                        &error,
+                    )
+                    .await
+                    .map_err(|error| error.to_string())?;
+            }
+        }
+        return Ok(true);
+    }
     let source_id = payload
         .get("source_id")
         .and_then(|v| v.as_str())
@@ -281,6 +395,47 @@ async fn process_once(repository: &PgRepository, tenant_id: TenantId) -> Result<
     Ok(true)
 }
 
+async fn reconcile_retrieval_projection(
+    repository: &PgRepository,
+    lance: &LanceProjectionAdapter,
+    tenant_id: TenantId,
+) -> Result<(), String> {
+    let profile_name = std::env::var("ENGRAVE_EMBEDDING_PROFILE").unwrap_or_default();
+    if profile_name != "deterministic-dev"
+        && profile_name != "voyage-3-lite"
+        && profile_name != "openai-large"
+    {
+        return Ok(());
+    }
+    let identity = if profile_name == "voyage-3-lite" || profile_name == "openai-large" {
+        EmbeddingConfiguration::production_candidates()
+            .map_err(|error| format!("invalid provider configuration: {error:?}"))?
+            .profile(&profile_name)
+            .map_err(|error| format!("missing provider profile: {error:?}"))?
+            .identity()
+            .map_err(|error| format!("invalid retrieval identity: {error:?}"))?
+    } else {
+        ProjectionIdentity::new(
+            "deterministic",
+            "default",
+            "1",
+            RETRIEVAL_DIMENSION,
+            "v1",
+            "default",
+        )
+        .map_err(|error| format!("invalid retrieval identity: {error:?}"))?
+    };
+    let rows = repository
+        .retrieval_projection_rows(tenant_id, &identity)
+        .await
+        .map_err(|error| error.to_string())?;
+    lance
+        .reconcile(&rows)
+        .await
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() {
     let database_url =
@@ -289,8 +444,16 @@ async fn main() {
     let repository = PgRepository::connect(&database_url)
         .await
         .expect("worker cannot connect to postgres");
+    let lance = match std::env::var("ENGRAVE_LANCEDB_PATH") {
+        Ok(path) => Some(
+            LanceProjectionAdapter::connect(&path, "memory_projection")
+                .await
+                .expect("worker cannot connect to LanceDB"),
+        ),
+        Err(_) => None,
+    };
     loop {
-        if let Err(error) = process_once(&repository, tenant_id).await {
+        if let Err(error) = process_once(&repository, tenant_id, lance.as_ref()).await {
             eprintln!("engrave-worker processing error: {error}");
         }
         tokio::time::sleep(Duration::from_millis(250)).await;

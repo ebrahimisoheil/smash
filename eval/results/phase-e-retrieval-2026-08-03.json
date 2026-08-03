@@ -1,0 +1,83 @@
+{
+  "date_utc": "2026-08-03T15:17:26.147915+00:00",
+  "fixture": "sales-phase-e-v1",
+  "profiles": [
+    {
+      "provider": "voyage",
+      "model": "voyage-3-lite",
+      "native_dimension": 512,
+      "output_dimension": 1024,
+      "projection_version": "dense-projection-v1",
+      "recall_at_5": 1.0,
+      "recall_at_10": 1.0,
+      "mrr": 0.6666666666666666,
+      "ndcg_at_10": 0.6666666666666666,
+      "unauthorized_result_count": 0,
+      "wrong_area_result_count": 0,
+      "unauthorized_candidate_count_before_filter": 9,
+      "wrong_area_candidate_count_before_filter": 3,
+      "batch_size": 7,
+      "batch_latency_ms": 504.9757920205593,
+      "batch_throughput_items_per_second": 13.862050638092777,
+      "cache_miss_latency_ms": 293.0913750315085,
+      "cache_hit_latency_ms": 0.0009170034900307655,
+      "lexical_fallback_latency_ms": {
+        "p50": 0.02737506292760372,
+        "p95": 0.02737506292760372,
+        "p99": 0.048625050112605095
+      },
+      "lancedb_exact_latency_ms": null,
+      "lancedb_ann_latency_ms": null,
+      "authorized_fixture_end_to_end_latency_ms": {
+        "p50": 319.48341592215,
+        "p95": 319.48341592215,
+        "p99": 358.9195419335738
+      },
+      "provider_usage": {
+        "total_tokens": 69
+      },
+      "estimated_cost_per_query_usd": 1.2000000000000003e-10,
+      "estimated_cost_reembedding_run_usd": 1.3800000000000002e-09,
+      "cost_basis": "published standard input price per 1M tokens; excludes free tier, discounts, and account billing"
+    },
+    {
+      "provider": "openai",
+      "model": "text-embedding-3-large",
+      "native_dimension": 3072,
+      "output_dimension": 1024,
+      "projection_version": "dense-projection-v1",
+      "recall_at_5": 1.0,
+      "recall_at_10": 1.0,
+      "mrr": 0.6666666666666666,
+      "ndcg_at_10": 0.6666666666666666,
+      "unauthorized_result_count": 0,
+      "wrong_area_result_count": 0,
+      "unauthorized_candidate_count_before_filter": 9,
+      "wrong_area_candidate_count_before_filter": 3,
+      "batch_size": 7,
+      "batch_latency_ms": 337.79487491119653,
+      "batch_throughput_items_per_second": 20.722635302978595,
+      "cache_miss_latency_ms": 287.20154194161296,
+      "cache_hit_latency_ms": 0.001084059476852417,
+      "lexical_fallback_latency_ms": {
+        "p50": 0.030416063964366913,
+        "p95": 0.030416063964366913,
+        "p99": 0.03062502946704626
+      },
+      "lancedb_exact_latency_ms": null,
+      "lancedb_ann_latency_ms": null,
+      "authorized_fixture_end_to_end_latency_ms": {
+        "p50": 259.36083390843123,
+        "p95": 259.36083390843123,
+        "p99": 734.6561669837683
+      },
+      "provider_usage": {
+        "prompt_tokens": 69,
+        "total_tokens": 69
+      },
+      "estimated_cost_per_query_usd": 7.8e-07,
+      "estimated_cost_reembedding_run_usd": 8.97e-06,
+      "cost_basis": "published standard input price per 1M tokens; excludes free tier, discounts, and account billing"
+    }
+  ]
+}

@@ -8,6 +8,9 @@
 use engrave_contracts::{AreaId, MemoryId, TenantId};
 use std::collections::{BTreeMap, BTreeSet};
 use time::OffsetDateTime;
+use uuid::Uuid;
+
+pub const PRODUCTION_OUTPUT_DIMENSION: usize = 1024;
 
 const BM25_K1: f32 = 1.2;
 const BM25_B: f32 = 0.75;
@@ -31,6 +34,9 @@ pub enum Visibility {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AuthorizationContext {
     pub tenant_id: TenantId,
+    /// The authenticated human or agent inside the active tenant. `None`
+    /// means there is no principal eligible to read private records.
+    pub actor_id: Option<Uuid>,
     pub permitted_area_ids: BTreeSet<AreaId>,
     pub role: ActorRole,
     pub purpose: String,
@@ -54,6 +60,7 @@ pub struct MemoryRecord {
     pub reason: String,
     pub evidence: Vec<String>,
     pub visibility: Visibility,
+    pub owner_actor_id: Option<Uuid>,
     pub approved: bool,
     pub current: bool,
     pub archived: bool,
@@ -89,7 +96,10 @@ impl MemoryRecord {
             return false;
         }
         match self.visibility {
-            Visibility::Private => false,
+            Visibility::Private => request
+                .authorization
+                .actor_id
+                .is_some_and(|actor_id| self.owner_actor_id == Some(actor_id)),
             Visibility::Area => true,
             Visibility::Enterprise => request.authorization.role == ActorRole::EnterpriseAdmin,
         }
@@ -209,6 +219,9 @@ pub struct ProjectionIdentity {
     pub provider: String,
     pub model: String,
     pub model_version: String,
+    /// Native dimension emitted by the provider before projection.
+    pub native_dimension: usize,
+    /// Dimension stored and searched by ENGRAVE.
     pub dimension: usize,
     pub projection_version: String,
     pub configuration_fingerprint: String,
@@ -232,10 +245,393 @@ impl ProjectionIdentity {
             provider: provider.into(),
             model: model.into(),
             model_version: model_version.into(),
+            native_dimension: dimension,
             dimension,
             projection_version: projection_version.into(),
             configuration_fingerprint: configuration_fingerprint.into(),
         })
+    }
+
+    pub fn with_native_dimension(
+        provider: impl Into<String>,
+        model: impl Into<String>,
+        model_version: impl Into<String>,
+        native_dimension: usize,
+        output_dimension: usize,
+        projection_version: impl Into<String>,
+        configuration_fingerprint: impl Into<String>,
+    ) -> Result<Self, RetrievalError> {
+        if native_dimension == 0 || output_dimension == 0 {
+            return Err(RetrievalError::InvalidProjection(
+                "dimensions must be positive",
+            ));
+        }
+        Ok(Self {
+            provider: provider.into(),
+            model: model.into(),
+            model_version: model_version.into(),
+            native_dimension,
+            dimension: output_dimension,
+            projection_version: projection_version.into(),
+            configuration_fingerprint: configuration_fingerprint.into(),
+        })
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EmbeddingProfile {
+    pub name: String,
+    pub provider: String,
+    pub model: String,
+    pub model_version: String,
+    pub native_dimension: usize,
+    pub output_dimension: usize,
+    pub projection_version: String,
+    pub configuration_fingerprint: String,
+    pub production: bool,
+    pub credential_env: Option<String>,
+}
+
+impl EmbeddingProfile {
+    pub fn identity(&self) -> Result<ProjectionIdentity, RetrievalError> {
+        ProjectionIdentity::with_native_dimension(
+            self.provider.clone(),
+            self.model.clone(),
+            self.model_version.clone(),
+            self.native_dimension,
+            self.output_dimension,
+            self.projection_version.clone(),
+            self.configuration_fingerprint.clone(),
+        )
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ConfigurationError {
+    MissingProfile,
+    DuplicateProfile,
+    InvalidProfile(String),
+    MissingCredential(String),
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct EmbeddingConfiguration {
+    profiles: BTreeMap<String, EmbeddingProfile>,
+}
+
+impl EmbeddingConfiguration {
+    pub fn new(
+        profiles: impl IntoIterator<Item = EmbeddingProfile>,
+    ) -> Result<Self, ConfigurationError> {
+        let mut configured = Self::default();
+        for profile in profiles {
+            if configured
+                .profiles
+                .insert(profile.name.clone(), profile)
+                .is_some()
+            {
+                return Err(ConfigurationError::DuplicateProfile);
+            }
+        }
+        if configured.profiles.is_empty() {
+            return Err(ConfigurationError::MissingProfile);
+        }
+        for profile in configured.profiles.values() {
+            if profile.production && profile.output_dimension != PRODUCTION_OUTPUT_DIMENSION {
+                return Err(ConfigurationError::InvalidProfile(format!(
+                    "production profile {} must output exactly {} dimensions",
+                    profile.name, PRODUCTION_OUTPUT_DIMENSION
+                )));
+            }
+            profile.identity().map_err(|e| {
+                ConfigurationError::InvalidProfile(format!("{}: {e:?}", profile.name))
+            })?;
+        }
+        Ok(configured)
+    }
+
+    pub fn profile(&self, name: &str) -> Result<&EmbeddingProfile, ConfigurationError> {
+        self.profiles
+            .get(name)
+            .ok_or(ConfigurationError::MissingProfile)
+    }
+
+    pub fn validate_runtime_credentials(&self, name: &str) -> Result<(), ConfigurationError> {
+        let profile = self.profile(name)?;
+        if profile.production {
+            let Some(environment_name) = profile.credential_env.as_deref() else {
+                return Err(ConfigurationError::MissingCredential(profile.name.clone()));
+            };
+            if std::env::var(environment_name)
+                .map(|value| value.trim().is_empty())
+                .unwrap_or(true)
+            {
+                return Err(ConfigurationError::MissingCredential(
+                    environment_name.to_owned(),
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    pub fn production_candidates() -> Result<Self, ConfigurationError> {
+        Self::new([
+            EmbeddingProfile {
+                name: "voyage-3-lite".into(),
+                provider: "voyage-compatible".into(),
+                model: "voyage-3-lite".into(),
+                model_version: "pinned-v1".into(),
+                native_dimension: 512,
+                output_dimension: 1024,
+                projection_version: "identity-v1".into(),
+                configuration_fingerprint: "unset-until-configured".into(),
+                production: true,
+                credential_env: Some("VOYAGE_API_KEY".into()),
+            },
+            EmbeddingProfile {
+                name: "openai-large".into(),
+                provider: "openai-compatible".into(),
+                model: "text-embedding-3-large".into(),
+                model_version: "pinned-v1".into(),
+                native_dimension: 3072,
+                output_dimension: 1024,
+                projection_version: "dense-projection-v1".into(),
+                configuration_fingerprint: "unset-until-configured".into(),
+                production: true,
+                credential_env: Some("OPENAI_API_KEY".into()),
+            },
+            EmbeddingProfile {
+                name: "cohere-v4".into(),
+                provider: "cohere-compatible".into(),
+                model: "embed-v4.0".into(),
+                model_version: "pinned-v1".into(),
+                native_dimension: 1536,
+                output_dimension: 1024,
+                projection_version: "dense-projection-v1".into(),
+                configuration_fingerprint: "unset-until-configured".into(),
+                production: true,
+                credential_env: Some("COHERE_API_KEY".into()),
+            },
+        ])
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ProviderError {
+    Timeout { retry_after_ms: Option<u64> },
+    RateLimit { retry_after_ms: Option<u64> },
+    Authentication,
+    InvalidRequest(String),
+    Quota,
+    Unavailable,
+    DimensionMismatch { expected: usize, actual: usize },
+    ProjectionFailure(String),
+    PermanentConfiguration(String),
+}
+
+impl ProviderError {
+    pub fn transient(&self) -> bool {
+        matches!(
+            self,
+            Self::Timeout { .. } | Self::RateLimit { .. } | Self::Unavailable
+        )
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct RetryPolicy {
+    pub max_attempts: u32,
+    pub base_delay_ms: u64,
+    pub max_delay_ms: u64,
+    pub max_concurrent: usize,
+}
+
+impl Default for RetryPolicy {
+    fn default() -> Self {
+        Self {
+            max_attempts: 4,
+            base_delay_ms: 100,
+            max_delay_ms: 5_000,
+            max_concurrent: 8,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum RetryDirective {
+    Retry { delay_ms: u64, attempt: u32 },
+    Permanent,
+}
+
+pub fn retry_directive(
+    error: &ProviderError,
+    attempt: u32,
+    policy: RetryPolicy,
+    jitter_seed: u64,
+) -> RetryDirective {
+    if !error.transient() || attempt + 1 >= policy.max_attempts {
+        return RetryDirective::Permanent;
+    }
+    let exponent = attempt.min(20);
+    let exponential = policy
+        .base_delay_ms
+        .saturating_mul(1_u64 << exponent)
+        .min(policy.max_delay_ms);
+    let hinted = match error {
+        ProviderError::Timeout { retry_after_ms } | ProviderError::RateLimit { retry_after_ms } => {
+            retry_after_ms.unwrap_or(exponential)
+        }
+        ProviderError::Unavailable => exponential,
+        _ => exponential,
+    };
+    // Deterministic ±25% jitter keeps tests reproducible while avoiding
+    // synchronized retries in production callers that provide a random seed.
+    let noise = (jitter_seed
+        .wrapping_mul(6_364_136_223_846_793_005)
+        .wrapping_add(1)
+        % 51) as i64
+        - 25;
+    let adjusted = ((hinted as i128) * (100 + noise as i128) / 100).max(1) as u64;
+    RetryDirective::Retry {
+        delay_ms: adjusted.min(policy.max_delay_ms),
+        attempt: attempt + 1,
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CircuitState {
+    Closed,
+    Open,
+    HalfOpen,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CircuitBreaker {
+    pub state: CircuitState,
+    pub consecutive_failures: u32,
+    pub failure_threshold: u32,
+    pub cooldown_ms: u64,
+    pub opened_at_ms: Option<u64>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct QueryEmbeddingCache {
+    capacity: usize,
+    entries: BTreeMap<String, EmbeddingVector>,
+}
+
+impl QueryEmbeddingCache {
+    pub fn new(capacity: usize) -> Self {
+        Self {
+            capacity: capacity.max(1),
+            entries: BTreeMap::new(),
+        }
+    }
+
+    pub fn get(&self, key: &str) -> Option<EmbeddingVector> {
+        self.entries.get(key).cloned()
+    }
+
+    pub fn insert(&mut self, key: impl Into<String>, vector: EmbeddingVector) {
+        let key = key.into();
+        self.entries.insert(key, vector);
+        while self.entries.len() > self.capacity {
+            if let Some(oldest) = self.entries.keys().next().cloned() {
+                self.entries.remove(&oldest);
+            }
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+}
+
+impl CircuitBreaker {
+    pub fn new(failure_threshold: u32, cooldown_ms: u64) -> Self {
+        Self {
+            state: CircuitState::Closed,
+            consecutive_failures: 0,
+            failure_threshold: failure_threshold.max(1),
+            cooldown_ms,
+            opened_at_ms: None,
+        }
+    }
+
+    pub fn allow_request(&mut self, now_ms: u64) -> bool {
+        if self.state == CircuitState::Open {
+            if now_ms.saturating_sub(self.opened_at_ms.unwrap_or(now_ms)) < self.cooldown_ms {
+                return false;
+            }
+            self.state = CircuitState::HalfOpen;
+        }
+        true
+    }
+
+    pub fn record_success(&mut self) {
+        self.state = CircuitState::Closed;
+        self.consecutive_failures = 0;
+        self.opened_at_ms = None;
+    }
+
+    pub fn record_failure(&mut self, now_ms: u64) {
+        self.consecutive_failures = self.consecutive_failures.saturating_add(1);
+        if self.consecutive_failures >= self.failure_threshold {
+            self.state = CircuitState::Open;
+            self.opened_at_ms = Some(now_ms);
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProjectionAdapter {
+    pub native_dimension: usize,
+    pub output_dimension: usize,
+    pub version: String,
+}
+
+impl ProjectionAdapter {
+    pub fn project(&self, values: &[f32]) -> Result<Vec<f32>, ProviderError> {
+        if self.native_dimension == 0
+            || self.output_dimension == 0
+            || self.version.trim().is_empty()
+        {
+            return Err(ProviderError::ProjectionFailure(
+                "invalid versioned projection configuration".into(),
+            ));
+        }
+        if values.len() != self.native_dimension {
+            return Err(ProviderError::DimensionMismatch {
+                expected: self.native_dimension,
+                actual: values.len(),
+            });
+        }
+        if self.native_dimension == self.output_dimension {
+            return Ok(values.to_vec());
+        }
+        // Explicit deterministic signed mixing: every native coordinate contributes
+        // to an output bucket; this is never truncation or zero-padding.
+        let mut output = vec![0.0; self.output_dimension];
+        for (index, value) in values.iter().enumerate() {
+            let bucket =
+                (index.wrapping_mul(1_664_525).wrapping_add(1_013_904_223)) % self.output_dimension;
+            let sign = if (index / self.output_dimension).is_multiple_of(2) {
+                1.0
+            } else {
+                -1.0
+            };
+            output[bucket] += value * sign;
+        }
+        if output.iter().all(|value| *value == 0.0) {
+            return Err(ProviderError::ProjectionFailure(
+                "projection produced a zero vector".into(),
+            ));
+        }
+        Ok(output)
     }
 }
 
@@ -434,6 +830,28 @@ impl ProjectionStore {
             hit.rank = index + 1;
         }
         hits
+    }
+
+    /// Validate the complete projection identity before a dense result can be
+    /// fused. Callers must fail the dense channel rather than mixing profiles.
+    pub fn validate_identity(&self, identity: &ProjectionIdentity) -> Result<(), RetrievalError> {
+        if self
+            .vectors
+            .values()
+            .any(|(found, vector)| found != identity || vector.values.len() != identity.dimension)
+        {
+            return Err(RetrievalError::Provider(ProviderError::DimensionMismatch {
+                expected: identity.dimension,
+                actual: self
+                    .vectors
+                    .values()
+                    .find_map(|(_, vector)| {
+                        (vector.values.len() != identity.dimension).then_some(vector.values.len())
+                    })
+                    .unwrap_or(identity.dimension),
+            }));
+        }
+        Ok(())
     }
 }
 
@@ -643,6 +1061,7 @@ pub enum RetrievalError {
     InvalidProjection(&'static str),
     DimensionMismatch { expected: usize, actual: usize },
     InvalidVector,
+    Provider(ProviderError),
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -755,6 +1174,7 @@ mod tests {
             reason: "approved fixture".into(),
             evidence: vec!["source-version:1#chunk:1".into()],
             visibility: Visibility::Area,
+            owner_actor_id: None,
             approved: true,
             current: true,
             archived: false,
@@ -772,6 +1192,7 @@ mod tests {
         SearchRequest {
             authorization: AuthorizationContext {
                 tenant_id,
+                actor_id: None,
                 permitted_area_ids: BTreeSet::from([area_id]),
                 role: ActorRole::NormalUser,
                 purpose: purpose.into(),
@@ -968,5 +1389,152 @@ mod tests {
             ),
             Err(BenchmarkGateError::RecallRegression)
         );
+    }
+
+    #[test]
+    fn two_production_profiles_are_1024_dimensional_and_secret_free() {
+        let config = EmbeddingConfiguration::production_candidates().unwrap();
+        for name in ["openai-large", "cohere-v4"] {
+            let profile = config.profile(name).unwrap();
+            assert_eq!(profile.output_dimension, PRODUCTION_OUTPUT_DIMENSION);
+            assert!(profile
+                .credential_env
+                .as_deref()
+                .unwrap()
+                .ends_with("_API_KEY"));
+            assert!(!format!("{profile:?}").contains("sk-"));
+            assert_eq!(profile.identity().unwrap().dimension, 1024);
+        }
+    }
+
+    #[test]
+    fn projection_is_explicit_and_never_truncates_or_pads() {
+        let adapter = ProjectionAdapter {
+            native_dimension: 3,
+            output_dimension: 1024,
+            version: "projection-v1".into(),
+        };
+        let projected = adapter.project(&[1.0, 2.0, 3.0]).unwrap();
+        assert_eq!(projected.len(), 1024);
+        assert!(projected.iter().filter(|value| **value != 0.0).count() >= 3);
+        assert!(matches!(
+            adapter.project(&[1.0]),
+            Err(ProviderError::DimensionMismatch { .. })
+        ));
+        assert!(matches!(
+            (ProjectionAdapter {
+                native_dimension: 3,
+                output_dimension: 3,
+                version: String::new()
+            })
+            .project(&[1.0, 2.0, 3.0]),
+            Err(ProviderError::ProjectionFailure(_))
+        ));
+    }
+
+    #[test]
+    fn provider_errors_classify_retryable_failures() {
+        assert!(ProviderError::Timeout {
+            retry_after_ms: Some(50)
+        }
+        .transient());
+        assert!(ProviderError::RateLimit {
+            retry_after_ms: None
+        }
+        .transient());
+        assert!(ProviderError::Unavailable.transient());
+        assert!(!ProviderError::Authentication.transient());
+        assert!(!ProviderError::Quota.transient());
+        assert!(!ProviderError::PermanentConfiguration("missing endpoint".into()).transient());
+        for error in [
+            ProviderError::Authentication,
+            ProviderError::InvalidRequest("bad input".into()),
+            ProviderError::Quota,
+            ProviderError::DimensionMismatch {
+                expected: 1024,
+                actual: 512,
+            },
+            ProviderError::ProjectionFailure("invalid adapter".into()),
+        ] {
+            assert!(!error.transient());
+        }
+    }
+
+    #[test]
+    fn production_configuration_rejects_non_1024_output() {
+        let result = EmbeddingConfiguration::new([EmbeddingProfile {
+            name: "bad-production".into(),
+            provider: "test".into(),
+            model: "bad".into(),
+            model_version: "1".into(),
+            native_dimension: 384,
+            output_dimension: 384,
+            projection_version: "v1".into(),
+            configuration_fingerprint: "fp".into(),
+            production: true,
+            credential_env: None,
+        }]);
+        assert!(matches!(result, Err(ConfigurationError::InvalidProfile(_))));
+    }
+
+    #[test]
+    fn retry_policy_honors_hints_caps_and_permanent_errors() {
+        let policy = RetryPolicy {
+            max_attempts: 3,
+            base_delay_ms: 100,
+            max_delay_ms: 500,
+            max_concurrent: 2,
+        };
+        let retry = retry_directive(
+            &ProviderError::RateLimit {
+                retry_after_ms: Some(1_000),
+            },
+            0,
+            policy,
+            7,
+        );
+        assert!(matches!(
+            retry,
+            RetryDirective::Retry {
+                delay_ms: 500,
+                attempt: 1
+            }
+        ));
+        assert_eq!(
+            retry_directive(&ProviderError::Authentication, 0, policy, 7),
+            RetryDirective::Permanent
+        );
+        assert_eq!(
+            retry_directive(&ProviderError::Unavailable, 2, policy, 7),
+            RetryDirective::Permanent
+        );
+    }
+
+    #[test]
+    fn circuit_breaker_opens_and_recovers_after_cooldown() {
+        let mut breaker = CircuitBreaker::new(2, 100);
+        assert!(breaker.allow_request(0));
+        breaker.record_failure(10);
+        assert!(breaker.allow_request(20));
+        breaker.record_failure(30);
+        assert_eq!(breaker.state, CircuitState::Open);
+        assert!(!breaker.allow_request(100));
+        assert!(breaker.allow_request(131));
+        assert_eq!(breaker.state, CircuitState::HalfOpen);
+        breaker.record_success();
+        assert_eq!(breaker.state, CircuitState::Closed);
+    }
+
+    #[test]
+    fn query_embedding_cache_is_bounded_and_profile_scoped_by_key() {
+        let identity = ProjectionIdentity::new("test", "model", "1", 2, "v1", "fp").unwrap();
+        let vector = EmbeddingVector::normalized(vec![1.0, 0.0], identity.dimension).unwrap();
+        let mut cache = QueryEmbeddingCache::new(2);
+        cache.insert("provider:model:version:query-a", vector.clone());
+        cache.insert("provider:model:version:query-b", vector.clone());
+        assert!(cache.get("provider:model:version:query-a").is_some());
+        cache.insert("other-provider:model:version:query-c", vector);
+        assert_eq!(cache.len(), 2);
+        assert!(cache.get("provider:model:version:query-b").is_some());
     }
 }

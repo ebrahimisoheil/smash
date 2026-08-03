@@ -49,6 +49,34 @@
         }
       }
     },
+    "/v1/search": {
+      "post": {
+        "tags": [],
+        "operationId": "search",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SearchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/version": {
       "get": {
         "tags": [],
@@ -101,6 +129,104 @@
           },
           "terminal": {
             "type": "boolean"
+          }
+        }
+      },
+      "SearchRequest": {
+        "type": "object",
+        "required": [
+          "query"
+        ],
+        "properties": {
+          "entry_limit": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "query": {
+            "type": "string"
+          },
+          "token_budget": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "SearchResponse": {
+        "type": "object",
+        "required": [
+          "results",
+          "tokens_used",
+          "lexical_candidates",
+          "dense_candidates",
+          "degraded_mode"
+        ],
+        "properties": {
+          "degraded_mode": {
+            "type": "string"
+          },
+          "dense_candidates": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "lexical_candidates": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SearchResult"
+            }
+          },
+          "tokens_used": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "SearchResult": {
+        "type": "object",
+        "required": [
+          "memory_id",
+          "area_id",
+          "claim",
+          "reason",
+          "provenance",
+          "applicability",
+          "warnings",
+          "estimated_tokens"
+        ],
+        "properties": {
+          "applicability": {
+            "type": "string"
+          },
+          "area_id": {
+            "type": "string"
+          },
+          "claim": {
+            "type": "string"
+          },
+          "estimated_tokens": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "memory_id": {
+            "type": "string"
+          },
+          "provenance": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "reason": {
+            "type": "string"
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         }
       },

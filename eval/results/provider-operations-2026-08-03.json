@@ -1,0 +1,283 @@
+{
+  "profiles": [
+    {
+      "profile": "voyage-3-lite",
+      "model": "voyage-3-lite",
+      "date_utc": "2026-08-03T14:54:56.295327+00:00",
+      "runs": [
+        {
+          "concurrency": 1,
+          "requests": 1,
+          "successes": 1,
+          "p50_ms": 336.04858396574855,
+          "p95_ms": 336.04858396574855,
+          "p99_ms": 336.04858396574855,
+          "wall_ms": 338.8129170052707,
+          "rate_limit_headers": [],
+          "usage": [
+            {
+              "total_tokens": 6
+            }
+          ],
+          "errors": []
+        },
+        {
+          "concurrency": 4,
+          "requests": 4,
+          "successes": 4,
+          "p50_ms": 291.1082914797589,
+          "p95_ms": 291.78312490694225,
+          "p99_ms": 298.7794999498874,
+          "wall_ms": 300.40487507358193,
+          "rate_limit_headers": [],
+          "usage": [
+            {
+              "total_tokens": 6
+            },
+            {
+              "total_tokens": 6
+            },
+            {
+              "total_tokens": 6
+            },
+            {
+              "total_tokens": 6
+            }
+          ],
+          "errors": []
+        },
+        {
+          "concurrency": 8,
+          "requests": 8,
+          "successes": 8,
+          "p50_ms": 298.73352049617097,
+          "p95_ms": 321.83962501585484,
+          "p99_ms": 413.7694590026513,
+          "wall_ms": 414.653749903664,
+          "rate_limit_headers": [],
+          "usage": [
+            {
+              "total_tokens": 6
+            },
+            {
+              "total_tokens": 6
+            },
+            {
+              "total_tokens": 6
+            },
+            {
+              "total_tokens": 6
+            },
+            {
+              "total_tokens": 6
+            },
+            {
+              "total_tokens": 6
+            },
+            {
+              "total_tokens": 6
+            },
+            {
+              "total_tokens": 6
+            }
+          ],
+          "errors": []
+        }
+      ],
+      "cost": "not available from provider response; no cost invented"
+    },
+    {
+      "profile": "openai-large",
+      "model": "text-embedding-3-large",
+      "date_utc": "2026-08-03T14:54:57.979565+00:00",
+      "runs": [
+        {
+          "concurrency": 1,
+          "requests": 1,
+          "successes": 1,
+          "p50_ms": 807.0317499805242,
+          "p95_ms": 807.0317499805242,
+          "p99_ms": 807.0317499805242,
+          "wall_ms": 807.5100420974195,
+          "rate_limit_headers": [
+            {
+              "x-ratelimit-limit-requests": "5000",
+              "x-ratelimit-remaining-requests": "4999",
+              "x-ratelimit-reset-requests": "12ms",
+              "x-ratelimit-limit-tokens": "1000000",
+              "x-ratelimit-remaining-tokens": "999991"
+            }
+          ],
+          "usage": [
+            {
+              "prompt_tokens": 6,
+              "total_tokens": 6
+            }
+          ],
+          "errors": []
+        },
+        {
+          "concurrency": 4,
+          "requests": 4,
+          "successes": 4,
+          "p50_ms": 243.57183347456157,
+          "p95_ms": 244.62820892222226,
+          "p99_ms": 576.8379169749096,
+          "wall_ms": 578.6889169830829,
+          "rate_limit_headers": [
+            {
+              "x-ratelimit-limit-requests": "5000",
+              "x-ratelimit-remaining-requests": "4999",
+              "x-ratelimit-reset-requests": "12ms",
+              "x-ratelimit-limit-tokens": "1000000",
+              "x-ratelimit-remaining-tokens": "999991"
+            },
+            {
+              "x-ratelimit-limit-requests": "5000",
+              "x-ratelimit-remaining-requests": "4997",
+              "x-ratelimit-reset-requests": "34ms",
+              "x-ratelimit-limit-tokens": "1000000",
+              "x-ratelimit-remaining-tokens": "999968"
+            },
+            {
+              "x-ratelimit-limit-requests": "5000",
+              "x-ratelimit-remaining-requests": "4999",
+              "x-ratelimit-reset-requests": "12ms",
+              "x-ratelimit-limit-tokens": "1000000",
+              "x-ratelimit-remaining-tokens": "999991"
+            },
+            {
+              "x-ratelimit-limit-requests": "5000",
+              "x-ratelimit-remaining-requests": "4998",
+              "x-ratelimit-reset-requests": "22ms",
+              "x-ratelimit-limit-tokens": "1000000",
+              "x-ratelimit-remaining-tokens": "999990"
+            }
+          ],
+          "usage": [
+            {
+              "prompt_tokens": 6,
+              "total_tokens": 6
+            },
+            {
+              "prompt_tokens": 6,
+              "total_tokens": 6
+            },
+            {
+              "prompt_tokens": 6,
+              "total_tokens": 6
+            },
+            {
+              "prompt_tokens": 6,
+              "total_tokens": 6
+            }
+          ],
+          "errors": []
+        },
+        {
+          "concurrency": 8,
+          "requests": 8,
+          "successes": 8,
+          "p50_ms": 242.72650002967566,
+          "p95_ms": 251.7476660432294,
+          "p99_ms": 296.36866599321365,
+          "wall_ms": 297.8579170303419,
+          "rate_limit_headers": [
+            {
+              "x-ratelimit-limit-requests": "5000",
+              "x-ratelimit-remaining-requests": "4999",
+              "x-ratelimit-reset-requests": "12ms",
+              "x-ratelimit-limit-tokens": "1000000",
+              "x-ratelimit-remaining-tokens": "999991"
+            },
+            {
+              "x-ratelimit-limit-requests": "5000",
+              "x-ratelimit-remaining-requests": "4997",
+              "x-ratelimit-reset-requests": "31ms",
+              "x-ratelimit-limit-tokens": "1000000",
+              "x-ratelimit-remaining-tokens": "999982"
+            },
+            {
+              "x-ratelimit-limit-requests": "5000",
+              "x-ratelimit-remaining-requests": "4999",
+              "x-ratelimit-reset-requests": "12ms",
+              "x-ratelimit-limit-tokens": "1000000",
+              "x-ratelimit-remaining-tokens": "999991"
+            },
+            {
+              "x-ratelimit-limit-requests": "5000",
+              "x-ratelimit-remaining-requests": "4997",
+              "x-ratelimit-reset-requests": "35ms",
+              "x-ratelimit-limit-tokens": "1000000",
+              "x-ratelimit-remaining-tokens": "999973"
+            },
+            {
+              "x-ratelimit-limit-requests": "5000",
+              "x-ratelimit-remaining-requests": "4998",
+              "x-ratelimit-reset-requests": "22ms",
+              "x-ratelimit-limit-tokens": "1000000",
+              "x-ratelimit-remaining-tokens": "999991"
+            },
+            {
+              "x-ratelimit-limit-requests": "5000",
+              "x-ratelimit-remaining-requests": "4996",
+              "x-ratelimit-reset-requests": "40ms",
+              "x-ratelimit-limit-tokens": "1000000",
+              "x-ratelimit-remaining-tokens": "999991"
+            },
+            {
+              "x-ratelimit-limit-requests": "5000",
+              "x-ratelimit-remaining-requests": "4997",
+              "x-ratelimit-reset-requests": "28ms",
+              "x-ratelimit-limit-tokens": "1000000",
+              "x-ratelimit-remaining-tokens": "999991"
+            },
+            {
+              "x-ratelimit-limit-requests": "5000",
+              "x-ratelimit-remaining-requests": "4998",
+              "x-ratelimit-reset-requests": "19ms",
+              "x-ratelimit-limit-tokens": "1000000",
+              "x-ratelimit-remaining-tokens": "999991"
+            }
+          ],
+          "usage": [
+            {
+              "prompt_tokens": 6,
+              "total_tokens": 6
+            },
+            {
+              "prompt_tokens": 6,
+              "total_tokens": 6
+            },
+            {
+              "prompt_tokens": 6,
+              "total_tokens": 6
+            },
+            {
+              "prompt_tokens": 6,
+              "total_tokens": 6
+            },
+            {
+              "prompt_tokens": 6,
+              "total_tokens": 6
+            },
+            {
+              "prompt_tokens": 6,
+              "total_tokens": 6
+            },
+            {
+              "prompt_tokens": 6,
+              "total_tokens": 6
+            },
+            {
+              "prompt_tokens": 6,
+              "total_tokens": 6
+            }
+          ],
+          "errors": []
+        }
+      ],
+      "cost": "not available from provider response; no cost invented"
+    }
+  ]
+}

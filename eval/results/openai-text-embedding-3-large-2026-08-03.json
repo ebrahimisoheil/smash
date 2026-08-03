@@ -1,0 +1,20 @@
+{
+  "provider": "openai-compatible",
+  "model": "text-embedding-3-large",
+  "date_utc": "2026-08-03T14:29:29.018107+00:00",
+  "queries": 3,
+  "native_dimensions_observed": [3072],
+  "cold_latency_ms": {
+    "p50": 231.27916699741036,
+    "min": 207.61174999643117,
+    "max": 709.1496250359342
+  },
+  "repeated_request_latency_ms": {
+    "p50": 269.0104170469567,
+    "min": 255.65299997106194,
+    "max": 270.56745800655335
+  },
+  "output_dimension_required": 1024,
+  "projection_required": true,
+  "retrieval_metrics": "not measured by provider-only harness"
+}

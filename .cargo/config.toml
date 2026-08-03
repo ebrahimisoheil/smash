@@ -1,0 +1,5 @@
+# The macOS linker can emit a noisy warning for large Rust debug binaries when
+# compact unwind metadata cannot encode every __eh_frame offset. Exception
+# handling remains available through the regular DWARF unwind information.
+[target.'cfg(target_os = "macos")']
+rustflags = ["-C", "link-arg=-Wl,-no_compact_unwind"]

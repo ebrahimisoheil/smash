@@ -97,7 +97,12 @@ ignore = true
 # Bans — duplicate-version policy and the crate-boundary enforcement.
 # ---------------------------------------------------------------------------
 [bans]
-multiple-versions = "warn"
+# LanceDB/DataFusion and SQLx/AWS currently require overlapping but
+# incompatible transitive versions of several crates. Keep advisory, license,
+# source, and explicit ban checks strict without turning this known dependency
+# graph shape into noisy non-actionable output. Revisit when those ecosystems
+# converge on shared versions.
+multiple-versions = "allow"
 wildcards = "deny"
 highlight = "all"
 allow-wildcard-paths = true

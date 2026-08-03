@@ -2251,6 +2251,7 @@ dependencies = [
  "engrave-storage",
  "serde",
  "serde_json",
+ "time",
  "tokio",
  "tower",
  "tower-http 0.7.0",
@@ -2297,14 +2298,20 @@ dependencies = [
 name = "engrave-storage"
 version = "0.1.0"
 dependencies = [
+ "arrow-array",
+ "arrow-schema",
  "async-trait",
  "aws-sdk-s3",
  "engrave-contracts",
  "engrave-core",
+ "futures-util",
  "lancedb",
+ "reqwest",
+ "serde",
  "serde_json",
  "sha2 0.10.9",
  "sqlx",
+ "tokio",
  "uuid",
 ]
 
@@ -3131,6 +3138,7 @@ dependencies = [
  "tokio",
  "tokio-rustls",
  "tower-service",
+ "webpki-roots 1.0.9",
 ]
 
 [[package]]
@@ -5322,6 +5330,7 @@ dependencies = [
  "wasm-bindgen-futures",
  "wasm-streams",
  "web-sys",
+ "webpki-roots 1.0.9",
 ]
 
 [[package]]

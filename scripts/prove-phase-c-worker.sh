@@ -10,6 +10,12 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
 ENV_FILE="${ENGRAVE_ENV_FILE:-.env.example}"
+COMPOSE_PROJECT="${ENGRAVE_COMPOSE_PROJECT:-engrave-v2}"
+COMPOSE_FILE="${ENGRAVE_COMPOSE_FILE:-compose.yaml}"
+POSTGRES_SERVICE="${ENGRAVE_POSTGRES_SERVICE:-postgres}"
+POSTGRES_USER="${ENGRAVE_POSTGRES_USER:-engrave_app}"
+POSTGRES_DB="${ENGRAVE_POSTGRES_DB:-engrave}"
+DATABASE_URL="${ENGRAVE_DATABASE_URL:-postgres://engrave_app:engrave_local_only_change_me@127.0.0.1:5432/engrave}"
 CARGO_BIN="${CARGO_BIN:-cargo}"
 if ! command -v "$CARGO_BIN" >/dev/null 2>&1 && [[ -x "${HOME:-}/.cargo/bin/cargo" ]]; then
   CARGO_BIN="${HOME}/.cargo/bin/cargo"
@@ -24,7 +30,11 @@ SOURCE_ID="00000000-0000-0000-0000-000000000020"
 VERSION_ID="00000000-0000-0000-0000-000000000021"
 OPERATION_ID="00000000-0000-0000-0000-000000000030"
 
-docker compose --env-file "$ENV_FILE" -f compose.yaml exec -T postgres psql -U engrave_app -d engrave -v ON_ERROR_STOP=1 <<SQL
+compose() {
+  docker compose -p "$COMPOSE_PROJECT" --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"
+}
+
+compose exec -T "$POSTGRES_SERVICE" psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 <<SQL
 SET app.tenant_id = '$TENANT_ID';
 INSERT INTO tenants (tenant_id, slug, state, created_at, updated_at)
 VALUES ('$TENANT_ID', 'phase-c-proof', 'active', now(), now()) ON CONFLICT DO NOTHING;
@@ -41,12 +51,12 @@ VALUES ('$OPERATION_ID', '$TENANT_ID', 'queued', '{"source_id":"$SOURCE_ID","sou
 ON CONFLICT (operation_id) DO UPDATE SET state = 'queued', attempt = 0, lease_token = NULL, lease_expires_at = NULL, cancel_requested = false, error_code = NULL, error_message = NULL, updated_at = now();
 SQL
 
-ENGRAVE_DATABASE_URL="postgres://engrave_app:engrave_local_only_change_me@127.0.0.1:5432/engrave" \
+ENGRAVE_DATABASE_URL="$DATABASE_URL" \
 ENGRAVE_TENANT_ID="$TENANT_ID" \
-timeout "${ENGRAVE_WORKER_TIMEOUT:-15}" \
+timeout "${ENGRAVE_WORKER_TIMEOUT:-60}" \
 "$CARGO_BIN" run --manifest-path Cargo.toml -p engrave-worker >/tmp/engrave-phase-c-worker.log 2>&1 || test "$?" -eq 124
 
-docker compose --env-file "$ENV_FILE" -f compose.yaml exec -T postgres psql -U engrave_app -d engrave -Atc "
+compose exec -T "$POSTGRES_SERVICE" psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "
 SET app.tenant_id = '$TENANT_ID';
 SELECT CASE WHEN (SELECT state FROM operations WHERE operation_id = '$OPERATION_ID') = 'succeeded'
  AND (SELECT state FROM sources WHERE source_id = '$SOURCE_ID') = 'ready'

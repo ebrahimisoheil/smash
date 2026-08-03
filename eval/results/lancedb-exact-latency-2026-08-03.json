@@ -1,0 +1,14 @@
+{
+  "date_utc": "2026-08-03",
+  "mode": "exact",
+  "ann": false,
+  "dataset_rows": 5,
+  "dimension": 2,
+  "queries": 100,
+  "latency_ms": {
+    "p50": 3.505,
+    "p95": 3.903,
+    "p99": 4.912
+  },
+  "note": "authorization-filter integration fixture; not a production-sized corpus"
+}
