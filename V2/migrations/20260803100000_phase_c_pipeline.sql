@@ -19,6 +19,7 @@ ALTER TABLE artifacts
 
 ALTER TABLE chunks
     ADD COLUMN IF NOT EXISTS artifact_id uuid REFERENCES artifacts(artifact_id),
+    ADD COLUMN IF NOT EXISTS content text NOT NULL DEFAULT '',
     ADD COLUMN IF NOT EXISTS start_offset bigint,
     ADD COLUMN IF NOT EXISTS end_offset bigint;
 

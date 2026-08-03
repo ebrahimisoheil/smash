@@ -5841,6 +5841,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "serde",
+ "sha2 0.10.9",
  "smash-contracts",
  "thiserror 2.0.19",
  "time",
@@ -5876,10 +5877,12 @@ name = "smash-worker"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "serde_json",
  "smash-contracts",
  "smash-core",
  "smash-storage",
  "tokio",
+ "uuid",
 ]
 
 [[package]]

@@ -5,6 +5,7 @@
 //! makes retry, lease recovery, and resume contract-testable without a live
 //! database.
 
+use sha2::{Digest, Sha256};
 use smash_contracts::{ArtifactId, ChunkId, OperationId, OperationState, SourceId, SourceState};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -59,6 +60,76 @@ pub enum PipelineError {
     Quarantined,
     IdempotencyConflict,
     InvalidCoordinate,
+    InputTooLarge,
+    UnreadableInput,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ExtractedChunk {
+    pub coordinate: String,
+    pub text: String,
+    pub content_hash: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProcessorOutput {
+    pub input_hash: String,
+    pub chunks: Vec<ExtractedChunk>,
+    pub warnings: Vec<String>,
+}
+
+/// Safe, deterministic first-party processor for UTF-8 text, Markdown, and
+/// CSV-like structured text. It never evaluates source content as code.
+pub fn process_text(
+    bytes: &[u8],
+    max_bytes: usize,
+    max_chunks: usize,
+) -> Result<ProcessorOutput, PipelineError> {
+    if bytes.len() > max_bytes {
+        return Err(PipelineError::InputTooLarge);
+    }
+    if bytes.contains(&0) {
+        return Err(PipelineError::UnreadableInput);
+    }
+    let text = std::str::from_utf8(bytes).map_err(|_| PipelineError::UnreadableInput)?;
+    let input_hash = hex_hash(bytes);
+    let mut chunks = Vec::new();
+    let mut offset = 0usize;
+    for (line_number, line) in text.lines().enumerate() {
+        if chunks.len() >= max_chunks {
+            break;
+        }
+        let width = line.len();
+        if !line.trim().is_empty() {
+            let coordinate = format!(
+                "line={};char={}..{}",
+                line_number + 1,
+                offset,
+                offset + width
+            );
+            chunks.push(ExtractedChunk {
+                coordinate,
+                text: line.to_owned(),
+                content_hash: hex_hash(line.as_bytes()),
+            });
+        }
+        offset += width + 1;
+    }
+    let chunk_limit_reached = chunks.len() == max_chunks && text.lines().count() > max_chunks;
+    Ok(ProcessorOutput {
+        input_hash,
+        chunks,
+        warnings: if chunk_limit_reached {
+            vec!["chunk_limit_reached".into()]
+        } else {
+            Vec::new()
+        },
+    })
+}
+
+pub fn hex_hash(bytes: &[u8]) -> String {
+    let digest = Sha256::digest(bytes);
+    digest.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 #[derive(Default)]
@@ -373,6 +444,18 @@ mod tests {
         };
         assert_eq!(pipeline.add_artifact(a.clone()), artifact);
         assert_eq!(pipeline.add_artifact(a), artifact);
+        let reprocessed = Artifact {
+            id: ArtifactId::new(Uuid::from_u128(5)),
+            source_id: source,
+            processor: "markdown".into(),
+            processor_version: "2".into(),
+            input_hash: "bytes-hash".into(),
+        };
+        assert_eq!(
+            pipeline.add_artifact(reprocessed),
+            ArtifactId::new(Uuid::from_u128(5))
+        );
+        assert_eq!(pipeline.artifact_count(), 2);
         let c = Chunk {
             id: chunk,
             source_id: source,
@@ -383,7 +466,7 @@ mod tests {
         };
         assert_eq!(pipeline.add_chunk(c.clone()).unwrap(), chunk);
         assert_eq!(pipeline.add_chunk(c).unwrap(), chunk);
-        assert_eq!((pipeline.artifact_count(), pipeline.chunk_count()), (1, 1));
+        assert_eq!((pipeline.artifact_count(), pipeline.chunk_count()), (2, 1));
         assert_eq!(pipeline.memory_activation_count(), 0);
     }
 
@@ -406,5 +489,14 @@ mod tests {
             OperationState::Cancelled
         );
         assert_eq!(pipeline.claim(0, 30), None);
+    }
+
+    #[test]
+    fn text_processor_is_bounded_and_returns_exact_coordinates() {
+        let output = process_text(b"# Title\nalpha\nbeta\n", 1024, 10).unwrap();
+        assert_eq!(output.chunks[1].coordinate, "line=2;char=8..13");
+        assert_eq!(output.chunks[2].coordinate, "line=3;char=14..18");
+        assert!(process_text(b"bad\0input", 1024, 10).is_err());
+        assert!(process_text(b"too large", 2, 10).is_err());
     }
 }
