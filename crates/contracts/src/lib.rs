@@ -336,6 +336,111 @@ pub enum CrossMapRelation {
     Blocked,
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum CrossMapMappingState {
+    Proposed,
+    Approved,
+    Rejected,
+    Blocked,
+    Expired,
+    Revoked,
+    Superseded,
+}
+
+/// One kind of structured object a Map version recognizes (for example
+/// "account" or "deal"). Kinds are opaque string keys; the Map, not the
+/// platform, owns their vocabulary.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct MapKindDefinition {
+    pub key: String,
+    pub label: String,
+    #[serde(default)]
+    pub description: Option<String>,
+}
+
+/// One typed relation a Map version recognizes between two kinds.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct MapRelationDefinition {
+    pub key: String,
+    pub label: String,
+    pub source_kind: String,
+    pub target_kind: String,
+    #[serde(default)]
+    pub description: Option<String>,
+}
+
+/// The versioned semantic contract of kinds and relations for one Area.
+/// Stored as the `definition` jsonb column on `map_versions`.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct MapDefinition {
+    pub kinds: Vec<MapKindDefinition>,
+    pub relations: Vec<MapRelationDefinition>,
+}
+
+/// Mirrors the `map_versions` table. Once `state` is `Published`, `definition`
+/// is immutable — a change requires a new `version_number`, never an update
+/// to this row.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct MapVersion {
+    pub map_version_id: MapVersionId,
+    pub tenant_id: TenantId,
+    pub area_id: AreaId,
+    pub version_number: u32,
+    pub state: MapState,
+    pub definition: MapDefinition,
+}
+
+/// Mirrors the `entities` table. `map_version_id` records the Map version
+/// under which this Entity was interpreted, per the Phase F non-negotiable
+/// decision that structured objects always retain their Map version.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize, ToSchema)]
+pub struct Entity {
+    pub entity_id: EntityId,
+    pub tenant_id: TenantId,
+    pub area_id: AreaId,
+    pub map_version_id: MapVersionId,
+    pub kind: String,
+    pub state: EntityState,
+    pub origin: Origin,
+    #[schema(value_type = Object)]
+    pub descriptor: serde_json::Value,
+    pub version: u64,
+}
+
+/// Mirrors the `relationships` table.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct Relationship {
+    pub relationship_id: RelationshipId,
+    pub tenant_id: TenantId,
+    pub area_id: AreaId,
+    pub map_version_id: MapVersionId,
+    pub source_entity_id: EntityId,
+    pub target_entity_id: EntityId,
+    pub relation_kind: String,
+    pub state: RelationshipState,
+    pub origin: Origin,
+    pub version: u64,
+}
+
+/// Mirrors the `cross_map_mappings` table. `source_map_version_id` and
+/// `target_map_version_id` pin the mapping to the exact Map versions it was
+/// approved against, so a later Map change cannot silently widen an
+/// approved Cross-Map mapping's meaning.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct CrossMapMapping {
+    pub cross_map_mapping_id: CrossMapMappingId,
+    pub tenant_id: TenantId,
+    pub source_area_id: AreaId,
+    pub target_area_id: AreaId,
+    pub source_map_version_id: MapVersionId,
+    pub target_map_version_id: MapVersionId,
+    pub relation: CrossMapRelation,
+    pub state: CrossMapMappingState,
+    pub rationale: String,
+    pub version: u64,
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize, ToSchema)]
 pub struct VersionToken {
     pub version: u64,
@@ -434,5 +539,70 @@ mod tests {
             serde_json::to_string(&RuleEffect::RequireApproval).unwrap(),
             "\"require_approval\""
         );
+    }
+
+    #[test]
+    fn cross_map_mapping_state_serialization_is_stable() {
+        assert_eq!(
+            serde_json::to_string(&CrossMapMappingState::Superseded).unwrap(),
+            "\"superseded\""
+        );
+        assert_eq!(
+            serde_json::to_string(&CrossMapRelation::SameIdentity).unwrap(),
+            "\"same_identity\""
+        );
+    }
+
+    #[test]
+    fn entity_and_relationship_retain_map_version() {
+        let tenant_id = TenantId::new_v7();
+        let area_id = AreaId::new_v7();
+        let map_version_id = MapVersionId::new_v7();
+        let entity = Entity {
+            entity_id: EntityId::new_v7(),
+            tenant_id,
+            area_id,
+            map_version_id,
+            kind: "account".into(),
+            state: EntityState::Active,
+            origin: Origin::Observed,
+            descriptor: serde_json::json!({ "name": "Acme" }),
+            version: 1,
+        };
+        let relationship = Relationship {
+            relationship_id: RelationshipId::new_v7(),
+            tenant_id,
+            area_id,
+            map_version_id,
+            source_entity_id: entity.entity_id,
+            target_entity_id: EntityId::new_v7(),
+            relation_kind: "owns".into(),
+            state: RelationshipState::Active,
+            origin: Origin::Observed,
+            version: 1,
+        };
+        assert_eq!(entity.map_version_id, map_version_id);
+        assert_eq!(relationship.map_version_id, map_version_id);
+        let round_tripped: Entity =
+            serde_json::from_str(&serde_json::to_string(&entity).unwrap()).unwrap();
+        assert_eq!(round_tripped.map_version_id, map_version_id);
+    }
+
+    #[test]
+    fn cross_map_mapping_pins_both_map_versions() {
+        let mapping = CrossMapMapping {
+            cross_map_mapping_id: CrossMapMappingId::new_v7(),
+            tenant_id: TenantId::new_v7(),
+            source_area_id: AreaId::new_v7(),
+            target_area_id: AreaId::new_v7(),
+            source_map_version_id: MapVersionId::new_v7(),
+            target_map_version_id: MapVersionId::new_v7(),
+            relation: CrossMapRelation::RelatedTo,
+            state: CrossMapMappingState::Proposed,
+            rationale: "shared account concept".into(),
+            version: 1,
+        };
+        assert_ne!(mapping.source_map_version_id, mapping.target_map_version_id);
+        assert_eq!(mapping.state, CrossMapMappingState::Proposed);
     }
 }

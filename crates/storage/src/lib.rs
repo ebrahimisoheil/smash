@@ -1311,6 +1311,399 @@ impl PgRepository {
         Ok(memory_id)
     }
 
+    /// Creates a Map draft. Mirrors `create_memory_proposal`: a plain
+    /// insert, `ON CONFLICT DO NOTHING` for idempotent creation-by-id.
+    pub async fn create_map_draft(
+        &self,
+        tenant_id: TenantId,
+        map_version_id: Uuid,
+        area_id: Uuid,
+        version_number: i64,
+        definition: &serde_json::Value,
+    ) -> Result<(), ApplicationError> {
+        sqlx::query("INSERT INTO map_versions (map_version_id, tenant_id, area_id, version_number, state, definition, version) VALUES ($1, $2, $3, $4, 'draft', $5, 1) ON CONFLICT (map_version_id) DO NOTHING")
+            .bind(map_version_id)
+            .bind(tenant_id.as_uuid())
+            .bind(area_id)
+            .bind(version_number)
+            .bind(definition)
+            .execute(&self.pool)
+            .await
+            .map_err(|_| ApplicationError::DependencyUnavailable {
+                dependency: "postgres",
+            })?;
+        Ok(())
+    }
+
+    /// Publishes a Map draft with compare-and-swap and a replay record,
+    /// mirroring `approve_memory_proposal`. Also updates the owning Area's
+    /// `current_map_version_id` in the same transaction. The transaction-
+    /// local `app.map_publication_admission` setting is the database-side
+    /// no-silent-publication guard (`require_map_publication_admission()`,
+    /// `migrations/20260808100000_phase_f_live_adapter.sql`).
+    pub async fn publish_map_draft(
+        &self,
+        tenant_id: TenantId,
+        map_version_id: Uuid,
+        expected_version: i64,
+        idempotency_key: &str,
+    ) -> Result<Uuid, ApplicationError> {
+        let mut tx =
+            self.pool
+                .begin()
+                .await
+                .map_err(|_| ApplicationError::DependencyUnavailable {
+                    dependency: "postgres",
+                })?;
+        if let Some(row) = sqlx::query("SELECT response FROM map_review_operations WHERE tenant_id = $1 AND map_version_id = $2 AND idempotency_key = $3")
+            .bind(tenant_id.as_uuid()).bind(map_version_id).bind(idempotency_key).fetch_optional(&mut *tx).await
+            .map_err(|_| ApplicationError::DependencyUnavailable { dependency: "postgres" })? {
+            return Uuid::parse_str(
+                row.get::<serde_json::Value, _>("response")
+                    .get("map_version_id")
+                    .and_then(|value| value.as_str())
+                    .unwrap_or_default(),
+            )
+            .map_err(|_| ApplicationError::InternalUnexpected);
+        }
+        // The CAS step only bumps `version`, leaving `state` untouched, so
+        // the publication-admission trigger (which only fires when
+        // `NEW.state = 'published'`) does not see a gated transition yet —
+        // admission is set immediately below, before the actual state flip.
+        let changed = sqlx::query("UPDATE map_versions SET version = version + 1 WHERE tenant_id = $1 AND map_version_id = $2 AND version = $3 AND state = 'draft'")
+            .bind(tenant_id.as_uuid()).bind(map_version_id).bind(expected_version).execute(&mut *tx).await
+            .map_err(|_| ApplicationError::DependencyUnavailable { dependency: "postgres" })?;
+        if changed.rows_affected() == 0 {
+            return Err(ApplicationError::VersionConflict {
+                resource: "map_version",
+                current_version: (expected_version + 1).max(0) as u64,
+            });
+        }
+        sqlx::query("SET LOCAL app.map_publication_admission = 'approved'")
+            .execute(&mut *tx)
+            .await
+            .map_err(|_| ApplicationError::DependencyUnavailable {
+                dependency: "postgres",
+            })?;
+        sqlx::query("UPDATE map_versions SET state = 'published' WHERE tenant_id = $1 AND map_version_id = $2")
+            .bind(tenant_id.as_uuid())
+            .bind(map_version_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(|_| ApplicationError::DependencyUnavailable {
+                dependency: "postgres",
+            })?;
+        sqlx::query("UPDATE areas SET current_map_version_id = $2 WHERE tenant_id = $1 AND area_id = (SELECT area_id FROM map_versions WHERE map_version_id = $2)")
+            .bind(tenant_id.as_uuid())
+            .bind(map_version_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(|_| ApplicationError::DependencyUnavailable {
+                dependency: "postgres",
+            })?;
+        let response = serde_json::json!({"map_version_id": map_version_id.to_string()});
+        sqlx::query("INSERT INTO map_review_operations (tenant_id, map_version_id, idempotency_key, response, created_at) VALUES ($1, $2, $3, $4, now())")
+            .bind(tenant_id.as_uuid()).bind(map_version_id).bind(idempotency_key).bind(&response).execute(&mut *tx).await
+            .map_err(|_| ApplicationError::DependencyUnavailable { dependency: "postgres" })?;
+        tx.commit()
+            .await
+            .map_err(|_| ApplicationError::DependencyUnavailable {
+                dependency: "postgres",
+            })?;
+        Ok(map_version_id)
+    }
+
+    /// Creates an Area-local Entity proposal (`state = 'proposed'`).
+    #[allow(clippy::too_many_arguments)]
+    pub async fn create_entity(
+        &self,
+        tenant_id: TenantId,
+        entity_id: Uuid,
+        area_id: Uuid,
+        map_version_id: Uuid,
+        kind: &str,
+        origin: &str,
+        descriptor: &serde_json::Value,
+    ) -> Result<(), ApplicationError> {
+        sqlx::query("INSERT INTO entities (entity_id, tenant_id, area_id, map_version_id, state, kind, origin, descriptor, version) VALUES ($1, $2, $3, $4, 'proposed', $5, $6, $7, 1) ON CONFLICT (entity_id) DO NOTHING")
+            .bind(entity_id)
+            .bind(tenant_id.as_uuid())
+            .bind(area_id)
+            .bind(map_version_id)
+            .bind(kind)
+            .bind(origin)
+            .bind(descriptor)
+            .execute(&self.pool)
+            .await
+            .map_err(|_| ApplicationError::DependencyUnavailable {
+                dependency: "postgres",
+            })?;
+        Ok(())
+    }
+
+    /// Approves a proposed Entity (`state = 'active'`) with compare-and-swap
+    /// and a replay record. `app.entity_admission` is the database-side
+    /// no-silent-activation guard shared by `entities` and `relationships`
+    /// (`require_entity_admission()`/`require_relationship_admission()`).
+    pub async fn approve_entity(
+        &self,
+        tenant_id: TenantId,
+        entity_id: Uuid,
+        expected_version: i64,
+        idempotency_key: &str,
+    ) -> Result<Uuid, ApplicationError> {
+        let mut tx =
+            self.pool
+                .begin()
+                .await
+                .map_err(|_| ApplicationError::DependencyUnavailable {
+                    dependency: "postgres",
+                })?;
+        if let Some(row) = sqlx::query("SELECT response FROM entity_review_operations WHERE tenant_id = $1 AND entity_id = $2 AND idempotency_key = $3")
+            .bind(tenant_id.as_uuid()).bind(entity_id).bind(idempotency_key).fetch_optional(&mut *tx).await
+            .map_err(|_| ApplicationError::DependencyUnavailable { dependency: "postgres" })? {
+            return Uuid::parse_str(
+                row.get::<serde_json::Value, _>("response")
+                    .get("entity_id")
+                    .and_then(|value| value.as_str())
+                    .unwrap_or_default(),
+            )
+            .map_err(|_| ApplicationError::InternalUnexpected);
+        }
+        // The CAS step only bumps `version`, leaving `state` untouched, so
+        // the entity-admission trigger (fires only when `NEW.state =
+        // 'active'`) does not see a gated transition yet — admission is set
+        // immediately below, before the actual state flip.
+        let changed = sqlx::query("UPDATE entities SET version = version + 1 WHERE tenant_id = $1 AND entity_id = $2 AND version = $3 AND state = 'proposed'")
+            .bind(tenant_id.as_uuid()).bind(entity_id).bind(expected_version).execute(&mut *tx).await
+            .map_err(|_| ApplicationError::DependencyUnavailable { dependency: "postgres" })?;
+        if changed.rows_affected() == 0 {
+            return Err(ApplicationError::VersionConflict {
+                resource: "entity",
+                current_version: (expected_version + 1).max(0) as u64,
+            });
+        }
+        sqlx::query("SET LOCAL app.entity_admission = 'approved'")
+            .execute(&mut *tx)
+            .await
+            .map_err(|_| ApplicationError::DependencyUnavailable {
+                dependency: "postgres",
+            })?;
+        sqlx::query("UPDATE entities SET state = 'active' WHERE tenant_id = $1 AND entity_id = $2")
+            .bind(tenant_id.as_uuid())
+            .bind(entity_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(|_| ApplicationError::DependencyUnavailable {
+                dependency: "postgres",
+            })?;
+        let response = serde_json::json!({"entity_id": entity_id.to_string()});
+        sqlx::query("INSERT INTO entity_review_operations (tenant_id, entity_id, idempotency_key, response, created_at) VALUES ($1, $2, $3, $4, now())")
+            .bind(tenant_id.as_uuid()).bind(entity_id).bind(idempotency_key).bind(&response).execute(&mut *tx).await
+            .map_err(|_| ApplicationError::DependencyUnavailable { dependency: "postgres" })?;
+        tx.commit()
+            .await
+            .map_err(|_| ApplicationError::DependencyUnavailable {
+                dependency: "postgres",
+            })?;
+        Ok(entity_id)
+    }
+
+    /// Creates an Area-local Relationship proposal (`state = 'proposed'`).
+    #[allow(clippy::too_many_arguments)]
+    pub async fn create_relationship(
+        &self,
+        tenant_id: TenantId,
+        relationship_id: Uuid,
+        area_id: Uuid,
+        map_version_id: Uuid,
+        source_entity_id: Uuid,
+        target_entity_id: Uuid,
+        relation_kind: &str,
+        origin: &str,
+    ) -> Result<(), ApplicationError> {
+        sqlx::query("INSERT INTO relationships (relationship_id, tenant_id, area_id, map_version_id, source_entity_id, target_entity_id, relation_kind, state, origin, version) VALUES ($1, $2, $3, $4, $5, $6, $7, 'proposed', $8, 1) ON CONFLICT (relationship_id) DO NOTHING")
+            .bind(relationship_id)
+            .bind(tenant_id.as_uuid())
+            .bind(area_id)
+            .bind(map_version_id)
+            .bind(source_entity_id)
+            .bind(target_entity_id)
+            .bind(relation_kind)
+            .bind(origin)
+            .execute(&self.pool)
+            .await
+            .map_err(|_| ApplicationError::DependencyUnavailable {
+                dependency: "postgres",
+            })?;
+        Ok(())
+    }
+
+    /// Approves a proposed Relationship (`state = 'active'`) with compare-
+    /// and-swap and a replay record.
+    pub async fn approve_relationship(
+        &self,
+        tenant_id: TenantId,
+        relationship_id: Uuid,
+        expected_version: i64,
+        idempotency_key: &str,
+    ) -> Result<Uuid, ApplicationError> {
+        let mut tx =
+            self.pool
+                .begin()
+                .await
+                .map_err(|_| ApplicationError::DependencyUnavailable {
+                    dependency: "postgres",
+                })?;
+        if let Some(row) = sqlx::query("SELECT response FROM relationship_review_operations WHERE tenant_id = $1 AND relationship_id = $2 AND idempotency_key = $3")
+            .bind(tenant_id.as_uuid()).bind(relationship_id).bind(idempotency_key).fetch_optional(&mut *tx).await
+            .map_err(|_| ApplicationError::DependencyUnavailable { dependency: "postgres" })? {
+            return Uuid::parse_str(
+                row.get::<serde_json::Value, _>("response")
+                    .get("relationship_id")
+                    .and_then(|value| value.as_str())
+                    .unwrap_or_default(),
+            )
+            .map_err(|_| ApplicationError::InternalUnexpected);
+        }
+        // Same two-step CAS-then-admission-then-state-flip shape as
+        // `approve_entity` above, for the same reason (the relationship-
+        // admission trigger fires only when `NEW.state = 'active'`).
+        let changed = sqlx::query("UPDATE relationships SET version = version + 1 WHERE tenant_id = $1 AND relationship_id = $2 AND version = $3 AND state = 'proposed'")
+            .bind(tenant_id.as_uuid()).bind(relationship_id).bind(expected_version).execute(&mut *tx).await
+            .map_err(|_| ApplicationError::DependencyUnavailable { dependency: "postgres" })?;
+        if changed.rows_affected() == 0 {
+            return Err(ApplicationError::VersionConflict {
+                resource: "relationship",
+                current_version: (expected_version + 1).max(0) as u64,
+            });
+        }
+        sqlx::query("SET LOCAL app.entity_admission = 'approved'")
+            .execute(&mut *tx)
+            .await
+            .map_err(|_| ApplicationError::DependencyUnavailable {
+                dependency: "postgres",
+            })?;
+        sqlx::query("UPDATE relationships SET state = 'active' WHERE tenant_id = $1 AND relationship_id = $2")
+            .bind(tenant_id.as_uuid())
+            .bind(relationship_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(|_| ApplicationError::DependencyUnavailable {
+                dependency: "postgres",
+            })?;
+        let response = serde_json::json!({"relationship_id": relationship_id.to_string()});
+        sqlx::query("INSERT INTO relationship_review_operations (tenant_id, relationship_id, idempotency_key, response, created_at) VALUES ($1, $2, $3, $4, now())")
+            .bind(tenant_id.as_uuid()).bind(relationship_id).bind(idempotency_key).bind(&response).execute(&mut *tx).await
+            .map_err(|_| ApplicationError::DependencyUnavailable { dependency: "postgres" })?;
+        tx.commit()
+            .await
+            .map_err(|_| ApplicationError::DependencyUnavailable {
+                dependency: "postgres",
+            })?;
+        Ok(relationship_id)
+    }
+
+    /// Creates a Cross-Map mapping proposal (`state = 'proposed'`).
+    #[allow(clippy::too_many_arguments)]
+    pub async fn create_cross_map_mapping(
+        &self,
+        tenant_id: TenantId,
+        cross_map_mapping_id: Uuid,
+        source_area_id: Uuid,
+        target_area_id: Uuid,
+        source_map_version_id: Uuid,
+        target_map_version_id: Uuid,
+        relation: &str,
+        rationale: &str,
+    ) -> Result<(), ApplicationError> {
+        sqlx::query("INSERT INTO cross_map_mappings (cross_map_mapping_id, tenant_id, source_area_id, target_area_id, source_map_version_id, target_map_version_id, relation, state, rationale, version) VALUES ($1, $2, $3, $4, $5, $6, $7, 'proposed', $8, 1) ON CONFLICT (cross_map_mapping_id) DO NOTHING")
+            .bind(cross_map_mapping_id)
+            .bind(tenant_id.as_uuid())
+            .bind(source_area_id)
+            .bind(target_area_id)
+            .bind(source_map_version_id)
+            .bind(target_map_version_id)
+            .bind(relation)
+            .bind(rationale)
+            .execute(&self.pool)
+            .await
+            .map_err(|_| ApplicationError::DependencyUnavailable {
+                dependency: "postgres",
+            })?;
+        Ok(())
+    }
+
+    /// Approves a proposed Cross-Map mapping (`state = 'approved'`) with
+    /// compare-and-swap and a replay record. `app.cross_map_admission` is
+    /// the database-side no-silent-activation guard
+    /// (`require_cross_map_admission()`) — the same structural defense in
+    /// depth Phase F's core `is_traversable` predicate relies on at the
+    /// application layer.
+    pub async fn approve_cross_map_mapping(
+        &self,
+        tenant_id: TenantId,
+        cross_map_mapping_id: Uuid,
+        expected_version: i64,
+        idempotency_key: &str,
+    ) -> Result<Uuid, ApplicationError> {
+        let mut tx =
+            self.pool
+                .begin()
+                .await
+                .map_err(|_| ApplicationError::DependencyUnavailable {
+                    dependency: "postgres",
+                })?;
+        if let Some(row) = sqlx::query("SELECT response FROM cross_map_review_operations WHERE tenant_id = $1 AND cross_map_mapping_id = $2 AND idempotency_key = $3")
+            .bind(tenant_id.as_uuid()).bind(cross_map_mapping_id).bind(idempotency_key).fetch_optional(&mut *tx).await
+            .map_err(|_| ApplicationError::DependencyUnavailable { dependency: "postgres" })? {
+            return Uuid::parse_str(
+                row.get::<serde_json::Value, _>("response")
+                    .get("cross_map_mapping_id")
+                    .and_then(|value| value.as_str())
+                    .unwrap_or_default(),
+            )
+            .map_err(|_| ApplicationError::InternalUnexpected);
+        }
+        // Same two-step CAS-then-admission-then-state-flip shape as
+        // `publish_map_draft`/`approve_entity` above (the cross-map-
+        // admission trigger fires only when `NEW.state = 'approved'`).
+        let changed = sqlx::query("UPDATE cross_map_mappings SET version = version + 1 WHERE tenant_id = $1 AND cross_map_mapping_id = $2 AND version = $3 AND state = 'proposed'")
+            .bind(tenant_id.as_uuid()).bind(cross_map_mapping_id).bind(expected_version).execute(&mut *tx).await
+            .map_err(|_| ApplicationError::DependencyUnavailable { dependency: "postgres" })?;
+        if changed.rows_affected() == 0 {
+            return Err(ApplicationError::VersionConflict {
+                resource: "cross_map_mapping",
+                current_version: (expected_version + 1).max(0) as u64,
+            });
+        }
+        sqlx::query("SET LOCAL app.cross_map_admission = 'approved'")
+            .execute(&mut *tx)
+            .await
+            .map_err(|_| ApplicationError::DependencyUnavailable {
+                dependency: "postgres",
+            })?;
+        sqlx::query("UPDATE cross_map_mappings SET state = 'approved' WHERE tenant_id = $1 AND cross_map_mapping_id = $2")
+            .bind(tenant_id.as_uuid())
+            .bind(cross_map_mapping_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(|_| ApplicationError::DependencyUnavailable {
+                dependency: "postgres",
+            })?;
+        let response =
+            serde_json::json!({"cross_map_mapping_id": cross_map_mapping_id.to_string()});
+        sqlx::query("INSERT INTO cross_map_review_operations (tenant_id, cross_map_mapping_id, idempotency_key, response, created_at) VALUES ($1, $2, $3, $4, now())")
+            .bind(tenant_id.as_uuid()).bind(cross_map_mapping_id).bind(idempotency_key).bind(&response).execute(&mut *tx).await
+            .map_err(|_| ApplicationError::DependencyUnavailable { dependency: "postgres" })?;
+        tx.commit()
+            .await
+            .map_err(|_| ApplicationError::DependencyUnavailable {
+                dependency: "postgres",
+            })?;
+        Ok(cross_map_mapping_id)
+    }
+
     /// Atomically claims queued work or work whose lease expired. The state
     /// predicate and token update happen in one statement, so two workers
     /// cannot receive the same lease.

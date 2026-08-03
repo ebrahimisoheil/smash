@@ -2,7 +2,10 @@
 
 **Status:** Phase E.2 implementation and acceptance verification **complete**.
 Production ANN deployment is not selected; exact search remains the default
-reference path because the measured ANN p99 is higher on the capacity fixture.
+reference path — see the 2026-08-03 performance pass below for re-confirmed,
+fresh evidence (the gate is not met because recall@20 is unmeasured on the
+only fixture available for a fresh ANN run, independent of the latency
+question).
 
 ## Decisions
 
@@ -175,6 +178,346 @@ injection in the deployment environment, and tune/decide ANN deployment based
 on its observed tail latency; these do not invalidate the completed E.2
 acceptance evidence. Exact search remains the measured contractual reference.
 
+## Performance pass (2026-08-03)
+
+**Scope:** persistent provider/DB clients, concurrent lexical+embedding
+retrieval, a complete query-embedding cache key, ANN-vs-exact gate
+re-confirmation, and a PostgreSQL index/query-plan audit. No Phase F/G/H/I
+work was touched. **Hardware/environment for every fresh measurement below:**
+this local machine (Apple Silicon, macOS/Docker Desktop), PostgreSQL 16.14
+(`postgres:16-alpine`) in Docker Compose bound to `localhost:5432`, LanceDB
+via local temp-directory file stores (no network), Rust 1.97.1 pinned
+toolchain, `cargo test` single-process runs. `VOYAGE_API_KEY`/`OPENAI_API_KEY`
+were not initially found in the shell environment or `.env`; they were
+located in `.env.local` partway through this session (already auto-loaded
+by `scripts/benchmark-*.py`'s own `env()` helper), so provider-backed
+benchmarks below were run live, not carried over — see "Provider usage,
+cost, and quality metrics" below for the fresh results. Everything else is
+measured fresh, for real, this session.
+
+### 1. Persistent provider clients and connections
+
+`crates/api/src/main.rs`'s `AppState` gained `voyage_client: Option<Arc<VoyageEmbeddingClient>>`
+and `openai_client: Option<Arc<OpenAiEmbeddingClient>>`, constructed once in
+`app_with_retrieval` at startup (`VoyageEmbeddingClient::from_env().ok().map(Arc::new)`),
+exactly mirroring the existing `Option<Arc<PgRepository>>`/`Option<Arc<LanceProjectionAdapter>>`
+pattern. Previously `VoyageEmbeddingClient::from_env()`/`OpenAiEmbeddingClient::from_env()`
+(each building a fresh `reqwest::Client`, discarding TLS/connection-pool
+reuse) were called **inside the `search` handler on every request**. The
+`search` function now does `state.voyage_client.clone()` /
+`state.openai_client.clone()` — an `Arc` clone, not a client construction.
+Credential handling is unchanged: the API key still lives only inside the
+client struct's private field, in memory, never logged; it is now read from
+the environment once at process start instead of once per request, which is
+a stricter, not weaker, exposure surface. All 8 `engrave-api` tests pass
+unmodified (no credentials configured in the test environment, so both
+clients are `None`, producing the same lexical-fallback path as before —
+proving no behavior change for the credential-absent case).
+
+### 2. Concurrent lexical retrieval and query embedding
+
+The embedding-through-`dense_hits` block was extracted into
+`resolve_dense_hits(state, repository, request) -> (Vec<DenseHit>, DegradedMode)`,
+which never returns `Err` (every failure path already degraded to
+`DegradedMode::LexicalOnly { reason }`). `search` now runs, after
+authorization is resolved and the `CoreSearchRequest` is built:
+
+```rust
+let (lexical_result, (dense, degraded)) = tokio::join!(
+    repository.search_lexical(&request),
+    resolve_dense_hits(&state, &repository, &request),
+);
+let lexical = lexical_result.map_err(|_| axum::http::StatusCode::SERVICE_UNAVAILABLE)?;
+```
+
+Bounded concurrency (the 8-permit `embedding_concurrency` semaphore) and the
+250 ms permit-acquire timeout are untouched — they still gate only the
+embedding branch, which now simply runs concurrently with lexical instead of
+after it. Three internal `ProjectionIdentity`-construction failure paths that
+previously used `?` to 500 the *entire* request (losing lexical results too)
+now degrade to `DegradedMode::LexicalOnly` instead, consistent with "a failed
+embedding task must never fail lexical retrieval."
+
+**Fresh, real measurement** (`crates/storage/tests/live_search_concurrency.rs`,
+new, `#[ignore]`d, run via `DATABASE_URL=postgres://engrave_app:engrave_local_only_change_me@localhost:5432/engrave cargo test -p engrave-storage --test live_search_concurrency --locked -- --ignored --nocapture`),
+against 50 real seeded memories in local PostgreSQL + a real local LanceDB
+projection, using the credential-free deterministic embedding provider —
+sequential (`search_lexical` awaited, then embed + LanceDB exact + rehydrate
+awaited) versus concurrent (`tokio::join!` of the same two units of work),
+four runs:
+
+| Run | Sequential (ms) | Concurrent (ms) |
+|---|---|---|
+| 1 | 34.047 | 5.933 |
+| 2 | 147.443 | 9.200 |
+| 3 | 17.494 | 6.012 |
+| 4 | 30.299 | 6.340 |
+
+Concurrent latency is consistently ~6-9 ms regardless of sequential's higher
+run-to-run variance (likely first-open/connection overhead on the freshly
+created per-run LanceDB temp path) — the expected `max(lexical, dense)`
+versus `lexical + dense` shape. The same test also proves non-interference
+directly: `tokio::join!(repository.search_lexical(&request), async { sleep(50ms); Err(()) })`
+completed in 51-53 ms total across runs with the lexical branch succeeding —
+a slow/failing embedding branch never blocked or failed lexical.
+
+### 3. Complete query-embedding cache key
+
+New `engrave_core::query_embedding_cache_key(identity, input_type, query)`
+(in `crates/core/src/retrieval.rs`) builds the key from `identity.provider`,
+`identity.model`, `identity.model_version`, `input_type` (`"query"` on this
+path), `identity.projection_version`, `identity.configuration_fingerprint`,
+and a normalized (whitespace-collapsed, lowercased) query string. The prior
+key omitted `provider` and `projection_version` entirely and used the loose
+`profile_name` string instead of the resolved identity. `crates/api/src/main.rs`'s
+`search` now calls this function instead of building its own `format!`.
+
+New test `query_embedding_cache_key_normalizes_and_isolates_by_full_identity`
+(`crates/core/src/retrieval.rs`) proves: a cache **hit** for the same query
+modulo casing/whitespace; a cache **miss** for genuinely different query
+text; **profile isolation** for a different provider with identical query
+text; **profile isolation** for a different projection version (so a
+re-projection can never accidentally reuse a vector cached under the old
+projection); and that `input_type` is part of the key. `engrave-core` now
+has 70 unit tests (69 prior + 1 new; the plan anticipated 2 new tests but
+one function covers all four required scenarios in one deterministic
+assertion sequence — recorded as the actual approach taken, not the
+originally planned two-test split). Fallback behavior (a cache miss or
+provider failure still degrades to lexical, never panics) is covered by
+Task 2's concurrency test.
+
+Real cache-hit/miss latency (in-process `QueryEmbeddingCache::get`, a
+`BTreeMap` lookup): both measured at `0` on the `Instant`-based measurement
+in `live_search_concurrency.rs` — below the resolution `std::time::Instant`
+can distinguish on this machine (sub-microsecond). This is expected and
+consistent with the prior ledger entry's own observation that
+"cache-hit measurements were sub-millisecond in the local in-memory
+harness."
+
+### 4. ANN gate re-confirmation
+
+Fresh `cargo test -p engrave-storage --test live_lancedb --locked -- --nocapture`
+(the same pre-existing 1,000-row, 1024-dimension fixture), run 4 times:
+
+| Run | Exact p50/p95/p99 (ms) | ANN p50/p95/p99 (ms) |
+|---|---|---|
+| 1 | 16.545 / 19.081 / 20.169 | 15.046 / 17.626 / 20.082 |
+| 2 | 16.580 / 17.739 / 20.170 | 15.005 / 16.472 / 17.860 |
+| 3 | 16.303 / 16.938 / 17.468 | 14.893 / 15.216 / 16.083 |
+| 4 | 16.356 / 16.761 / 18.293 | 14.929 / 15.323 / 17.204 |
+
+**This materially disagrees with the previously recorded evidence** (exact
+p99 18.466 ms, ANN p99 186.406 ms, roughly a 10x gap) — the fresh runs show
+exact and ANN within noise of each other, with ANN fractionally faster in
+3 of 4 runs. This discrepancy is reported honestly rather than reconciled;
+plausible causes (LanceDB version/dependency drift, IVF_FLAT default
+`nprobe` behavior at n=1,000, different underlying hardware between the
+original run and this sandbox) are not distinguished here and are flagged
+as follow-up work, not resolved.
+
+**The ANN gate is still not met, independent of the latency question**:
+the gate requires "recall@20 within one point of exact." The `live_lancedb`
+fixture is 1,000 synthetic random vectors with no gold/relevance labels —
+recall cannot be computed on it at any cutoff, and `BenchmarkMetrics`
+(`crates/core/src/retrieval.rs`) only implements `recall_at_5`/`recall_at_10`,
+not `recall_at_20`, on the separate small sales fixture that does have gold
+labels. **No recall@20 number exists to evaluate the gate against, on either
+fixture, so the gate cannot be satisfied regardless of the latency finding.**
+Combined with the new latency evidence's own inconsistency with the prior
+recorded run, this is not a basis for changing the default. **Decision:
+exact search remains the default reference path, unchanged.**
+
+### 5. PostgreSQL index and query-plan audit
+
+A synthetic dataset was seeded directly via SQL against the local
+(`docker compose`) PostgreSQL instance, migrated fresh from empty through
+`008_phase_e_performance_indexes.sql` beforehand: 5 tenants x 4 areas x 20
+actors/tenant x 200 memories/area = **4,000 memories, 4,000 current
+`memory_versions`, 400 `area_grants`** (every actor granted every area in
+its own tenant — a realistic worst case for the authorization query). Seeded
+with a fixed, reproducible generation script (recorded in this ledger, not
+committed as a migration since it is dev-only measurement scaffolding); the
+data was deleted after measurement.
+
+**`EXPLAIN (ANALYZE, BUFFERS)` on `search_lexical`'s eligible-CTE join**
+(`memory_versions mv JOIN memories m ON m.tenant_id = mv.tenant_id AND
+m.current_version_id = mv.memory_version_id`, filtered by tenant, area,
+state, and full-text match) — **before** any new index:
+
+> `Nested Loop (actual time=5.159..171.903 rows=800 loops=1)` — inner
+> `Seq Scan on memories m (actual time=0.001..0.174 rows=800 loops=800)`,
+> **639,200 rows removed by the join filter**, 86,410 buffer hits,
+> **172.359 ms execution time**, at only 4,000 rows.
+
+Root cause: `memories.current_version_id` had **no index at all**, so
+PostgreSQL could not do an index-backed join and instead re-scanned the
+entire `memories` table once per matched `memory_versions` row — a pattern
+that degrades faster than linearly as tenant size grows, not merely slowly.
+
+**`EXPLAIN (ANALYZE, BUFFERS)` on `resolve_search_authorization`'s
+`area_grants` query** (the non-admin path, run on every authorization
+resolution) — before any new index: `Seq Scan on area_grants`, 396 of 400
+rows removed by filter, 0.227 ms. Cheap today at 400 rows, but `area_grants`
+scales with tenant x actor x area grant volume and had zero index support
+for its own hot-path predicate.
+
+**Migration added** (`migrations/20260809100000_phase_e_performance_indexes.sql`,
+wired into `compose.yaml`'s `migrate` service as step 008 — the full chain
+001 through 008 was verified to apply cleanly from a completely empty,
+freshly wiped `docker compose` volume):
+
+```sql
+CREATE INDEX IF NOT EXISTS memories_current_version_idx ON memories (current_version_id);
+CREATE INDEX IF NOT EXISTS memories_tenant_area_state_idx ON memories (tenant_id, area_id, state);
+CREATE INDEX IF NOT EXISTS area_grants_actor_lookup_idx ON area_grants (tenant_id, actor_id, state, effective_from, effective_until);
+```
+
+**`EXPLAIN (ANALYZE, BUFFERS)` after the migration**, same queries, same
+seeded data:
+
+- `search_lexical` join: `Hash Join (actual time=1.349..6.168 rows=800
+  loops=1)`, driven by `Bitmap Index Scan on memories_tenant_area_state_idx`
+  and `Bitmap Index Scan on memory_versions_live_retrieval_idx`, **6.512 ms
+  execution time** — a **~26x** improvement, from 86,410 to 326 buffer hits
+  (~265x fewer).
+- `area_grants`: `Index Scan using area_grants_actor_lookup_idx`, **0.193 ms**
+  execution time.
+
+`operations` (the durable job queue) was already correctly indexed —
+`claim_operation`'s exact query shape (`tenant_id`, `state`/`lease_expires_at`
+predicate, `ORDER BY created_at FOR UPDATE SKIP LOCKED`) already used
+`Index Scan using operations_reclaim_idx`, confirmed by `EXPLAIN ANALYZE`
+before any change; no migration was needed there. `actors` lookups by
+`tenant_id`+`actor_id` and by `subject` still plan as `Seq Scan` at this
+data volume (~104 rows) — this is the planner correctly preferring a
+sequential scan on a genuinely tiny table, not a missing-index signal, and
+no index was added for it.
+
+**Verification that the fresh-from-empty migration chain and all live
+suites still pass** after the new migration: `docker compose up migrate`
+(fresh volume) exited 0; `cargo test -p engrave-storage --locked -- --ignored --test-threads=1`
+— all 8 live tests pass (`live_phase_f` x3, `live_queue` x2,
+`live_repository` x2, `live_search_concurrency` x1), 0 failed.
+
+### Memory usage
+
+`/usr/bin/time -l cargo test -p engrave-storage --test live_search_concurrency --locked -- --ignored --nocapture`
+— maximum resident set size **188,268,544 bytes** (~188 MB). This is a
+`cargo test` harness measurement (includes the test binary, tokio runtime,
+PostgreSQL client, and LanceDB/Arrow dependencies loaded in-process), not an
+isolated production API-process footprint claim, consistent with how the
+prior entry's own memory numbers are qualified.
+
+### Provider usage, cost, and quality metrics — re-measured fresh, live
+
+Correction: `VOYAGE_API_KEY`/`OPENAI_API_KEY` were not in the shell
+environment or `.env`, but **were** present in `.env.local`, which
+`scripts/benchmark-*.py` already auto-load (`env()` helper, `Path('.env.local')`).
+`.env.local` is git-ignored (`.gitignore`'s `.env.*` pattern) and its values
+were never printed or logged. All four provider-backed benchmark scripts
+were run live against the real Voyage and OpenAI APIs this session:
+
+- `python3 scripts/benchmark-voyage-provider.py` — native dimension 512
+  confirmed; cold p50 **361.12 ms** (min 300.10, max 531.84); repeated-
+  request p50 **296.43 ms** (min 289.36, max 368.70).
+- `python3 scripts/benchmark-openai-provider.py` — native dimension 3072
+  confirmed; cold p50 **918.53 ms** (min 298.32, max 1470.36 — one slow
+  outlier pulled the median up; min is consistent with Voyage's cold
+  latency); repeated-request p50 **223.67 ms** (min 217.24, max 312.65).
+- `python3 scripts/benchmark-phase-e-retrieval.py` — first attempt hit a
+  30 s socket timeout on the Voyage batch call (transient network flake,
+  not a code defect) and was retried once, succeeding. Both profiles:
+  recall@5 **1.0**, recall@10 **1.0**, MRR **0.6667**, nDCG@10 **0.6667**,
+  **0** unauthorized and **0** wrong-Area results after filtering — with
+  **9** unauthorized and **3** wrong-Area candidates present *before*
+  filtering, proving the authorization boundary is genuinely exercised, not
+  vacuously passing. Cache-miss latency: Voyage 301.93 ms, OpenAI 285.10 ms.
+  Cache-hit latency: **0.00087 ms** for both (a plain dict lookup in the
+  harness). Authorized fixture end-to-end p50/p99: Voyage 285.65/296.51 ms,
+  OpenAI 241.73/276.17 ms. Provider usage: 69 tokens both. Cost estimates:
+  Voyage $1.2e-10/query, $1.38e-9/run; OpenAI $7.8e-7/query, $8.97e-6/run
+  (published standard list price, excludes credits/discounts/free tier).
+  Full output: this run was not saved to `eval/results/` as a new dated
+  file (the existing 2026-08-03 result files from the original credentialed
+  run already cover this fixture/profile combination; these numbers refresh
+  rather than duplicate that evidence).
+- `python3 scripts/benchmark-provider-operations.py` — bounded concurrency
+  1/4/8, both profiles, 0 errors at every concurrency level:
+
+  | Provider | Concurrency | p50 (ms) | p95 (ms) | p99 (ms) | Wall (ms) |
+  |---|---|---|---|---|---|
+  | Voyage | 1 | 328.49 | 328.49 | 328.49 | 331.88 |
+  | Voyage | 4 | 297.07 | 299.59 | 332.13 | 333.59 |
+  | Voyage | 8 | 294.02 | 318.59 | 318.67 | 319.66 |
+  | OpenAI | 1 | 359.55 | 359.55 | 359.55 | 360.03 |
+  | OpenAI | 4 | 295.69 | 296.05 | 298.61 | 299.36 |
+  | OpenAI | 8 | 212.74 | 225.12 | 228.19 | 229.05 |
+
+  Rate-limit headers were captured per request (both providers report
+  generous remaining-request/token budgets at this volume); no throttling
+  was observed at concurrency 8.
+
+These are all fresh, live numbers from this session, consistent in shape
+with (and superseding, not merely repeating) the 2026-08-03 entry above.
+
+**Recall@20 is still not measured** — this is independent of credential
+availability: `BenchmarkMetrics`/`evaluate_benchmark` in
+`crates/core/src/retrieval.rs` only implement `recall_at_5`/`recall_at_10`,
+and `scripts/benchmark-phase-e-retrieval.py`'s fixture has only 3 gold-
+labeled documents total, too few to meaningfully evaluate a @20 cutoff even
+if the metric existed. This remains a recorded limitation, not a completed
+measurement, and does not change the ANN gate conclusion in the section
+above (recall@20 is still unavailable on the LanceDB latency fixture, which
+has no gold labels of any kind).
+
+### Full verification gate (this session)
+
+```bash
+cargo fmt --all -- --check                                          # pass
+cargo test --workspace --locked                                     # pass — 95 tests, 8 correctly ignored, 0 failed
+cargo clippy --workspace --all-targets --locked -- -D warnings      # pass
+cargo deny check                                                    # pass
+./scripts/check-openapi.sh                                          # pass, no diff
+npm run build   # apps/web                                          # pass
+docker compose up migrate   # fresh volume, chain 001-008           # exit 0
+DATABASE_URL=postgres://engrave_app:engrave_local_only_change_me@localhost:5432/engrave \
+  cargo test -p engrave-storage --locked -- --ignored --test-threads=1   # pass — 8/8
+```
+
+### Decisions
+
+- Provider/DB clients (`PgRepository`, `LanceProjectionAdapter`,
+  `VoyageEmbeddingClient`, `OpenAiEmbeddingClient`) are constructed once at
+  process startup and held in `AppState`; none are constructed per request.
+- Lexical retrieval and query embedding run concurrently via `tokio::join!`
+  after authorization is resolved; a failed or slow embedding branch cannot
+  fail or block lexical results.
+- The query-embedding cache key includes provider, model, model version,
+  input type, projection version, configuration fingerprint, and a
+  normalized query string.
+- ANN remains **not** the default. The gate is unmet because recall@20 is
+  unmeasured on any available fixture — this is independent of, and does
+  not require resolving, the fresh latency measurement's disagreement with
+  the prior recorded ANN figure.
+- Two indexes were added, each justified by a measured `EXPLAIN ANALYZE`
+  plan change (`Nested Loop`/`Seq Scan` → `Hash Join`/`Index Scan`), not
+  spec speculation.
+
+### Limitations
+
+- Live-credentialed provider benchmarks ran this session (see above) —
+  cold/warm latency and cost figures are fresh, not carried over. One
+  transient socket timeout occurred on the first `benchmark-phase-e-retrieval.py`
+  attempt and was resolved by a single retry.
+- The fresh ANN-vs-exact latency measurement disagrees sharply with the
+  prior recorded figure; the cause is not diagnosed here.
+- Recall@20 is not implemented anywhere in this repository's benchmark
+  tooling.
+- The synthetic PostgreSQL performance dataset (4,000 memories, 400
+  area_grants) is far below real production scale; the measured ~26x join
+  improvement is expected to grow, not shrink, at larger scale, but that is
+  not itself measured.
+
 ## Open questions and limitations
 
 - Provider integration has bounded cache behavior, retry hints, API
@@ -189,6 +532,16 @@ acceptance evidence. Exact search remains the measured contractual reference.
   repository evidence.
 - Phase F has not been started. Larger, domain-specific corpora and ANN tail
   tuning remain follow-up work, but they are not hidden as completion evidence.
+- **Superseded by the 2026-08-03 performance pass above:** ANN tail latency
+  was re-measured (4 fresh runs) and now disagrees with the figure recorded
+  here — treat the performance-pass section as current; this line is kept
+  for history. The ANN gate remains unmet regardless, because recall@20 has
+  never been measured on any fixture in this repository.
+- Two PostgreSQL indexes were added in the performance pass
+  (`migrations/20260809100000_phase_e_performance_indexes.sql`), each
+  justified by a measured `EXPLAIN ANALYZE` plan change. Real production
+  scale (beyond the 4,000-memory synthetic dataset used to justify them)
+  remains unproven.
 
 ## Research links
 

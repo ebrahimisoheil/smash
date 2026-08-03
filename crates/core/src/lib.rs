@@ -24,16 +24,34 @@ pub mod phase_c;
 pub use phase_c::{hex_hash, process_text};
 pub mod memory;
 pub use memory::{AdmissionPolicy, MemoryStore, ProposalInput, ReviewAction, ReviewError};
+pub mod maps;
+pub use maps::{
+    MapActivity, MapDraft, MapDraftInput, MapPublicationPolicy, MapReviewAction, MapReviewError,
+    MapStore,
+};
+pub mod entities;
+pub use entities::{
+    EntityActivity, EntityDraftInput, EntityProposalPolicy, EntityReviewAction, EntityReviewError,
+    EntityStore, IdentityGroup, RelationshipDraftInput, RelationshipReviewAction,
+};
+pub mod graph;
+pub use graph::{bounded_traverse, GraphBudget, GraphEdge, GraphNode, GraphPacket};
+pub mod cross_map;
+pub use cross_map::{
+    is_traversable, CrossMapActivity, CrossMapProposalInput, CrossMapReviewAction,
+    CrossMapReviewError, CrossMapStore,
+};
 pub mod retrieval;
 pub use retrieval::{
-    enforce_benchmark_gate, light_search, retry_directive, ActorRole, AuthorizationContext,
-    BenchmarkCase, BenchmarkGateError, BenchmarkMetrics, BenchmarkThresholds, CircuitBreaker,
-    CircuitState, ConfigurationError, DegradedMode, DenseHit, DeterministicEmbeddingProvider,
-    EmbeddingConfiguration, EmbeddingProfile, EmbeddingProvider, EmbeddingVector, FusionMode,
-    LexicalHit, LexicalIndex, MemoryRecord, ProjectionAdapter, ProjectionIdentity, ProjectionStore,
-    ProviderError, QueryEmbeddingCache, ReconciliationReport, RetrievalError, RetrievalPacket,
-    RetryDirective, RetryPolicy, SearchProfile, SearchRequest, Visibility,
-    PRODUCTION_OUTPUT_DIMENSION,
+    enforce_benchmark_gate, expand_cross_map_candidates, light_search, query_embedding_cache_key,
+    retry_directive, ActorRole, AuthorizationContext, BenchmarkCase, BenchmarkGateError,
+    BenchmarkMetrics, BenchmarkThresholds, CircuitBreaker, CircuitState, ConfigurationError,
+    CrossMapExpansionBudget, CrossMapExpansionSource, DegradedMode, DenseHit,
+    DeterministicEmbeddingProvider, EmbeddingConfiguration, EmbeddingProfile, EmbeddingProvider,
+    EmbeddingVector, FusionMode, LexicalHit, LexicalIndex, MemoryRecord, ProjectionAdapter,
+    ProjectionIdentity, ProjectionStore, ProviderError, QueryEmbeddingCache, ReconciliationReport,
+    RetrievalError, RetrievalPacket, RetryDirective, RetryPolicy, SearchProfile, SearchRequest,
+    Visibility, PRODUCTION_OUTPUT_DIMENSION,
 };
 
 /// Stable machine-readable application error codes. The HTTP mapping belongs

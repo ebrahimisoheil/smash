@@ -11,9 +11,12 @@ const BENCHMARK: &str = include_str!("../../../eval/fixtures/sales/benchmark.tom
 struct Fixture {
     meta: Meta,
     areas: Vec<Area>,
+    map_versions: Vec<MapVersionFixture>,
     accounts: Vec<Record>,
     people: Vec<Record>,
     opportunity: Record,
+    entities: Vec<EntityFixture>,
+    relationships: Vec<RelationshipFixture>,
     sources: Vec<Source>,
     chunks: Vec<Chunk>,
     memories: Vec<Memory>,
@@ -37,6 +40,35 @@ struct Area {
     id: String,
     slug: String,
     map_version_id: String,
+}
+#[derive(Debug, Deserialize)]
+struct MapVersionFixture {
+    id: String,
+    area_id: String,
+    version_number: u32,
+    state: String,
+    kinds: Vec<String>,
+    relations: Vec<String>,
+}
+#[derive(Debug, Deserialize)]
+struct EntityFixture {
+    id: String,
+    area_id: String,
+    map_version_id: String,
+    kind: String,
+    state: String,
+    origin: Origin,
+}
+#[derive(Debug, Deserialize)]
+struct RelationshipFixture {
+    id: String,
+    area_id: String,
+    map_version_id: String,
+    source_entity_id: String,
+    target_entity_id: String,
+    relation_kind: String,
+    state: String,
+    origin: Origin,
 }
 #[derive(Debug, Deserialize)]
 struct Record {
@@ -110,6 +142,8 @@ struct CrossMap {
     state: String,
     source_area_id: String,
     target_area_id: String,
+    source_map_version_id: String,
+    target_map_version_id: String,
     relation: String,
     rationale: String,
 }
@@ -250,7 +284,55 @@ fn canonical_sales_fixture_is_deterministic_and_complete() {
             .filter(|line| line.starts_with('|'))
             .count()
             - 2,
-        13
+        14
+    );
+}
+
+#[test]
+fn every_entity_and_relationship_retains_a_published_map_version() {
+    let fixture: Fixture = toml::from_str(FIXTURE).expect("fixture TOML must parse");
+    assert_eq!(fixture.map_versions.len(), 2);
+    assert!(fixture
+        .map_versions
+        .iter()
+        .all(|map_version| map_version.state == "published"));
+    let known_map_version_ids: std::collections::BTreeSet<_> = fixture
+        .map_versions
+        .iter()
+        .map(|map_version| map_version.id.as_str())
+        .collect();
+
+    assert_eq!(fixture.entities.len(), 2);
+    for entity in &fixture.entities {
+        assert!(
+            known_map_version_ids.contains(entity.map_version_id.as_str()),
+            "entity {} must reference a declared map version",
+            entity.id
+        );
+    }
+
+    assert_eq!(fixture.relationships.len(), 1);
+    for relationship in &fixture.relationships {
+        assert!(
+            known_map_version_ids.contains(relationship.map_version_id.as_str()),
+            "relationship {} must reference a declared map version",
+            relationship.id
+        );
+        assert!(fixture
+            .entities
+            .iter()
+            .any(|entity| entity.id == relationship.source_entity_id));
+        assert!(fixture
+            .entities
+            .iter()
+            .any(|entity| entity.id == relationship.target_entity_id));
+    }
+
+    assert!(known_map_version_ids.contains(fixture.cross_map.source_map_version_id.as_str()));
+    assert!(known_map_version_ids.contains(fixture.cross_map.target_map_version_id.as_str()));
+    assert_ne!(
+        fixture.cross_map.source_map_version_id,
+        fixture.cross_map.target_map_version_id
     );
 }
 

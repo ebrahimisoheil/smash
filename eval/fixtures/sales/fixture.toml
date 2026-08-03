@@ -14,6 +14,22 @@ id = "018f0000-0000-7000-8000-000000000020"
 slug = "marketing"
 map_version_id = "018f0000-0000-7000-8000-000000000021"
 
+[[map_versions]]
+id = "018f0000-0000-7000-8000-000000000011"
+area_id = "018f0000-0000-7000-8000-000000000010"
+version_number = 1
+state = "published"
+kinds = ["account", "opportunity", "person"]
+relations = ["owns", "employs"]
+
+[[map_versions]]
+id = "018f0000-0000-7000-8000-000000000021"
+area_id = "018f0000-0000-7000-8000-000000000020"
+version_number = 1
+state = "published"
+kinds = ["campaign", "account"]
+relations = ["targets"]
+
 [actor]
 id = "018f0000-0000-7000-8000-000000000030"
 role = "enterprise_admin"
@@ -58,6 +74,32 @@ account_id = "018f0000-0000-7000-8000-000000000100"
 owner_id = "018f0000-0000-7000-8000-000000000110"
 map_version_id = "018f0000-0000-7000-8000-000000000011"
 stage = "proposal"
+
+[[entities]]
+id = "018f0000-0000-7000-8000-000000000700"
+area_id = "018f0000-0000-7000-8000-000000000010"
+map_version_id = "018f0000-0000-7000-8000-000000000011"
+kind = "account"
+state = "active"
+origin = "observed"
+
+[[entities]]
+id = "018f0000-0000-7000-8000-000000000701"
+area_id = "018f0000-0000-7000-8000-000000000010"
+map_version_id = "018f0000-0000-7000-8000-000000000011"
+kind = "person"
+state = "active"
+origin = "observed"
+
+[[relationships]]
+id = "018f0000-0000-7000-8000-000000000710"
+area_id = "018f0000-0000-7000-8000-000000000010"
+map_version_id = "018f0000-0000-7000-8000-000000000011"
+source_entity_id = "018f0000-0000-7000-8000-000000000701"
+target_entity_id = "018f0000-0000-7000-8000-000000000700"
+relation_kind = "owns"
+state = "active"
+origin = "observed"
 
 [[sources]]
 id = "018f0000-0000-7000-8000-000000000200"
@@ -169,6 +211,8 @@ id = "018f0000-0000-7000-8000-000000000600"
 state = "proposed"
 source_area_id = "018f0000-0000-7000-8000-000000000010"
 target_area_id = "018f0000-0000-7000-8000-000000000020"
+source_map_version_id = "018f0000-0000-7000-8000-000000000011"
+target_map_version_id = "018f0000-0000-7000-8000-000000000021"
 relation = "related_to"
 rationale = "Sales account concept may enrich the Marketing account view."
 

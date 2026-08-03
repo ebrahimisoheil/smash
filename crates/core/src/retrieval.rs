@@ -5,7 +5,8 @@
 //! ranking, packet bounds, provenance, and degraded-mode semantics.
 #![forbid(unsafe_code)]
 
-use engrave_contracts::{AreaId, MemoryId, TenantId};
+use crate::cross_map;
+use engrave_contracts::{AreaId, CrossMapMapping, CrossMapRelation, MemoryId, TenantId};
 use std::collections::{BTreeMap, BTreeSet};
 use time::OffsetDateTime;
 use uuid::Uuid;
@@ -549,6 +550,39 @@ impl QueryEmbeddingCache {
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
     }
+}
+
+/// Builds a `QueryEmbeddingCache` key that fully identifies what was
+/// embedded and how: provider, model, model version, input type (e.g.
+/// `"query"` — Light Search only ever embeds the query text, never a
+/// document, but the input type is still part of the key so this cache
+/// could not silently conflate the two if it were ever reused for
+/// document-side embedding), projection version, and configuration
+/// fingerprint, so two different provider/profile identities never
+/// collide. The query text itself is normalized (whitespace-collapsed,
+/// lowercased) so two requests differing only in casing or incidental
+/// whitespace share one cache entry — and so the cache never stores the
+/// literal, unnormalized user input as its key material.
+pub fn query_embedding_cache_key(
+    identity: &ProjectionIdentity,
+    input_type: &str,
+    query: &str,
+) -> String {
+    let normalized_query = query
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_lowercase();
+    format!(
+        "{}:{}:{}:{}:{}:{}:{}",
+        identity.provider,
+        identity.model,
+        identity.model_version,
+        input_type,
+        identity.projection_version,
+        identity.configuration_fingerprint,
+        normalized_query
+    )
 }
 
 impl CircuitBreaker {
@@ -1143,6 +1177,125 @@ pub fn evaluate_benchmark(cases: &[BenchmarkCase<'_>]) -> BenchmarkMetrics {
     metrics
 }
 
+/// Explicit bounds on Cross-Map Light Search expansion. `expand_cross_map_candidates`
+/// is opt-in — nothing calls it automatically, and ordinary `light_search`
+/// output is unaffected by its existence — so a caller who never invokes it
+/// gets exactly Phase E's existing behavior (non-negotiable decision #9:
+/// Phase F must not silently alter Phase E ranking semantics).
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct CrossMapExpansionBudget {
+    pub max_mappings: usize,
+    pub max_candidates_per_mapping: usize,
+    pub max_total_candidates: usize,
+}
+
+impl Default for CrossMapExpansionBudget {
+    /// Small and conservative by design: Cross-Map expansion is meant to
+    /// surface a few explainable cross-Area hints, not to become a second
+    /// aggressive search hiding inside Light Search. A future benchmark may
+    /// move these numbers; they are not permanent truth.
+    fn default() -> Self {
+        Self {
+            max_mappings: 3,
+            max_candidates_per_mapping: 5,
+            max_total_candidates: 10,
+        }
+    }
+}
+
+/// One approved Cross-Map mapping being offered for expansion, together with
+/// records the caller has *already* authorized as visible in
+/// `mapping.target_area_id` for this actor/purpose. This function does not
+/// perform that authorization itself — exactly like `LexicalIndex::search`
+/// and dense retrieval, the server derives permitted candidates before this
+/// function ever runs; it only decides which already-authorized records may
+/// cross an approved mapping, and how many.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CrossMapExpansionSource {
+    pub mapping: CrossMapMapping,
+    /// Expiry set at approval time. `CrossMapMapping` itself carries no
+    /// expiry field (see `cross_map.rs`'s expiry-model doc comment); the
+    /// caller must supply whatever `cross_map::CrossMapStore` recorded.
+    pub expires_at: Option<OffsetDateTime>,
+    pub candidates: Vec<MemoryRecord>,
+}
+
+/// Cross-Map Light Search expansion. A blocked, expired, revoked, rejected,
+/// superseded, or semantically-`Blocked` mapping contributes zero
+/// candidates — re-checked here via `cross_map::is_traversable` even though
+/// the caller is expected to have filtered already, because mapping
+/// permission must be verified immediately before candidate generation,
+/// never trusted from an earlier check alone (non-negotiable decision #5).
+/// Expansion only follows a mapping's declared direction: a mapping is only
+/// used when `active_area_id == mapping.source_area_id`, never the reverse,
+/// keeping Cross-Map conservative and explicit rather than bidirectional by
+/// accident. Every returned `RetrievalResult` keeps the record's *original*
+/// `area_id` (the source Area it actually lives in, not the active Area)
+/// and records the mapping path in `warnings`, so meaning is never
+/// flattened across Areas (non-negotiable decision #6 / roadmap: "Cross-Map
+/// results preserve original labels and mapping paths").
+pub fn expand_cross_map_candidates(
+    active_area_id: AreaId,
+    now: OffsetDateTime,
+    sources: &[CrossMapExpansionSource],
+    budget: CrossMapExpansionBudget,
+) -> (Vec<RetrievalResult>, bool) {
+    let mut results = Vec::new();
+    let mut truncated = false;
+    let mut mappings_used = 0usize;
+
+    for source in sources {
+        if mappings_used >= budget.max_mappings {
+            truncated = true;
+            break;
+        }
+        if source.mapping.source_area_id != active_area_id {
+            // Conservative by design: only the mapping's declared direction
+            // is traversable, never the reverse.
+            continue;
+        }
+        if source.mapping.relation == CrossMapRelation::Blocked {
+            continue;
+        }
+        if !cross_map::is_traversable(&source.mapping, now, source.expires_at) {
+            continue;
+        }
+        mappings_used += 1;
+
+        let mapping_path = format!(
+            "cross_map:{}:{:?}:{}->{}",
+            source.mapping.cross_map_mapping_id.as_uuid(),
+            source.mapping.relation,
+            source.mapping.source_area_id.as_uuid(),
+            source.mapping.target_area_id.as_uuid()
+        );
+
+        for (taken_from_this_mapping, record) in source.candidates.iter().enumerate() {
+            if taken_from_this_mapping >= budget.max_candidates_per_mapping
+                || results.len() >= budget.max_total_candidates
+            {
+                truncated = true;
+                break;
+            }
+            results.push(RetrievalResult {
+                memory_id: record.memory_id,
+                area_id: record.area_id,
+                claim: record.claim.clone(),
+                reason: record.reason.clone(),
+                provenance: record.evidence.clone(),
+                applicability: record.applies_when.clone(),
+                warnings: vec![mapping_path.clone()],
+                estimated_tokens: estimate_tokens(record),
+            });
+        }
+        if results.len() >= budget.max_total_candidates {
+            break;
+        }
+    }
+
+    (results, truncated)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1536,5 +1689,286 @@ mod tests {
         cache.insert("other-provider:model:version:query-c", vector);
         assert_eq!(cache.len(), 2);
         assert!(cache.get("provider:model:version:query-b").is_some());
+    }
+
+    #[test]
+    fn query_embedding_cache_key_normalizes_and_isolates_by_full_identity() {
+        let identity =
+            ProjectionIdentity::new("voyage-compatible", "voyage-3-lite", "1", 2, "v1", "fp-a")
+                .unwrap();
+
+        // Same identity, same query (modulo casing/whitespace) -> same key,
+        // so a real cache hit occurs on the second lookup.
+        let key_a = query_embedding_cache_key(&identity, "query", "Renewal Security");
+        let key_a_normalized =
+            query_embedding_cache_key(&identity, "query", "  renewal   security  ");
+        assert_eq!(key_a, key_a_normalized);
+
+        let mut cache = QueryEmbeddingCache::new(4);
+        let vector = EmbeddingVector::normalized(vec![1.0, 0.0], identity.dimension).unwrap();
+        cache.insert(key_a.clone(), vector.clone());
+        assert!(
+            cache.get(&key_a_normalized).is_some(),
+            "normalized query must hit the same cache entry"
+        );
+
+        // A different query text is a genuine cache miss.
+        let different_query_key = query_embedding_cache_key(&identity, "query", "different query");
+        assert!(cache.get(&different_query_key).is_none());
+
+        // Profile isolation: identical query text, different provider ->
+        // different key, never collides.
+        let other_provider =
+            ProjectionIdentity::new("openai-compatible", "voyage-3-lite", "1", 2, "v1", "fp-a")
+                .unwrap();
+        assert_ne!(
+            key_a,
+            query_embedding_cache_key(&other_provider, "query", "Renewal Security")
+        );
+
+        // Profile isolation: identical provider/model, different projection
+        // version -> different key (a re-projection must never reuse a
+        // stale vector cached under the old projection).
+        let other_projection =
+            ProjectionIdentity::new("voyage-compatible", "voyage-3-lite", "1", 2, "v2", "fp-a")
+                .unwrap();
+        assert_ne!(
+            key_a,
+            query_embedding_cache_key(&other_projection, "query", "Renewal Security")
+        );
+
+        // Input type is part of the key even though Light Search only ever
+        // uses "query" today.
+        assert_ne!(
+            key_a,
+            query_embedding_cache_key(&identity, "document", "Renewal Security")
+        );
+    }
+
+    fn mapping(
+        tenant_id: TenantId,
+        source_area_id: AreaId,
+        target_area_id: AreaId,
+        relation: CrossMapRelation,
+        state: engrave_contracts::CrossMapMappingState,
+    ) -> CrossMapMapping {
+        CrossMapMapping {
+            cross_map_mapping_id: engrave_contracts::CrossMapMappingId::new_v7(),
+            tenant_id,
+            source_area_id,
+            target_area_id,
+            source_map_version_id: engrave_contracts::MapVersionId::new_v7(),
+            target_map_version_id: engrave_contracts::MapVersionId::new_v7(),
+            relation,
+            state,
+            rationale: "shared account concept".into(),
+            version: 1,
+        }
+    }
+
+    #[test]
+    fn cross_map_expansion_preserves_original_area_and_mapping_path() {
+        use engrave_contracts::CrossMapMappingState;
+        let tenant_id = TenantId::new_v7();
+        let active_area = AreaId::new_v7();
+        let other_area = AreaId::new_v7();
+        let now = OffsetDateTime::UNIX_EPOCH;
+
+        let approved = mapping(
+            tenant_id,
+            active_area,
+            other_area,
+            CrossMapRelation::RelatedTo,
+            CrossMapMappingState::Approved,
+        );
+        let candidate = record(
+            tenant_id,
+            other_area,
+            MemoryId::new_v7(),
+            "Marketing account view shares the Sales account concept",
+        );
+
+        let (results, truncated) = expand_cross_map_candidates(
+            active_area,
+            now,
+            &[CrossMapExpansionSource {
+                mapping: approved.clone(),
+                expires_at: None,
+                candidates: vec![candidate.clone()],
+            }],
+            CrossMapExpansionBudget::default(),
+        );
+
+        assert!(!truncated);
+        assert_eq!(results.len(), 1);
+        // Original Area label is preserved — never relabeled to the active Area.
+        assert_eq!(results[0].area_id, other_area);
+        assert_eq!(results[0].memory_id, candidate.memory_id);
+        assert!(
+            results[0].warnings[0].contains(&approved.cross_map_mapping_id.as_uuid().to_string())
+        );
+        assert!(results[0].warnings[0].contains(&active_area.as_uuid().to_string()));
+        assert!(results[0].warnings[0].contains(&other_area.as_uuid().to_string()));
+    }
+
+    #[test]
+    fn cross_map_expansion_yields_zero_candidates_for_every_non_approved_state() {
+        use engrave_contracts::CrossMapMappingState;
+        let tenant_id = TenantId::new_v7();
+        let active_area = AreaId::new_v7();
+        let other_area = AreaId::new_v7();
+        let now = OffsetDateTime::UNIX_EPOCH;
+        let candidate = record(
+            tenant_id,
+            other_area,
+            MemoryId::new_v7(),
+            "should never surface",
+        );
+
+        for state in [
+            CrossMapMappingState::Proposed,
+            CrossMapMappingState::Rejected,
+            CrossMapMappingState::Blocked,
+            CrossMapMappingState::Expired,
+            CrossMapMappingState::Revoked,
+            CrossMapMappingState::Superseded,
+        ] {
+            let unusable = mapping(
+                tenant_id,
+                active_area,
+                other_area,
+                CrossMapRelation::RelatedTo,
+                state,
+            );
+            let (results, _) = expand_cross_map_candidates(
+                active_area,
+                now,
+                &[CrossMapExpansionSource {
+                    mapping: unusable,
+                    expires_at: None,
+                    candidates: vec![candidate.clone()],
+                }],
+                CrossMapExpansionBudget::default(),
+            );
+            assert!(
+                results.is_empty(),
+                "state {state:?} must yield zero candidates"
+            );
+        }
+    }
+
+    #[test]
+    fn cross_map_expansion_ignores_expired_and_wrong_direction_and_blocked_relation() {
+        use engrave_contracts::CrossMapMappingState;
+        let tenant_id = TenantId::new_v7();
+        let active_area = AreaId::new_v7();
+        let other_area = AreaId::new_v7();
+        let now = OffsetDateTime::UNIX_EPOCH;
+        let candidate = record(tenant_id, other_area, MemoryId::new_v7(), "never surfaces");
+
+        // Approved but already expired.
+        let expired = mapping(
+            tenant_id,
+            active_area,
+            other_area,
+            CrossMapRelation::RelatedTo,
+            CrossMapMappingState::Approved,
+        );
+        let (results, _) = expand_cross_map_candidates(
+            active_area,
+            now,
+            &[CrossMapExpansionSource {
+                mapping: expired,
+                expires_at: Some(now - time::Duration::seconds(1)),
+                candidates: vec![candidate.clone()],
+            }],
+            CrossMapExpansionBudget::default(),
+        );
+        assert!(results.is_empty());
+
+        // Approved, unexpired, but the active Area is the mapping's TARGET,
+        // not its declared source — must not be traversed in reverse.
+        let wrong_direction = mapping(
+            tenant_id,
+            other_area,
+            active_area,
+            CrossMapRelation::RelatedTo,
+            CrossMapMappingState::Approved,
+        );
+        let (results, _) = expand_cross_map_candidates(
+            active_area,
+            now,
+            &[CrossMapExpansionSource {
+                mapping: wrong_direction,
+                expires_at: None,
+                candidates: vec![candidate.clone()],
+            }],
+            CrossMapExpansionBudget::default(),
+        );
+        assert!(results.is_empty());
+
+        // Approved, correct direction, but the semantic relation itself is
+        // Blocked — defense in depth even if lifecycle state says Approved.
+        let blocked_relation = mapping(
+            tenant_id,
+            active_area,
+            other_area,
+            CrossMapRelation::Blocked,
+            CrossMapMappingState::Approved,
+        );
+        let (results, _) = expand_cross_map_candidates(
+            active_area,
+            now,
+            &[CrossMapExpansionSource {
+                mapping: blocked_relation,
+                expires_at: None,
+                candidates: vec![candidate],
+            }],
+            CrossMapExpansionBudget::default(),
+        );
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn cross_map_expansion_is_bounded_by_budget() {
+        use engrave_contracts::CrossMapMappingState;
+        let tenant_id = TenantId::new_v7();
+        let active_area = AreaId::new_v7();
+        let other_area = AreaId::new_v7();
+        let now = OffsetDateTime::UNIX_EPOCH;
+        let approved = mapping(
+            tenant_id,
+            active_area,
+            other_area,
+            CrossMapRelation::RelatedTo,
+            CrossMapMappingState::Approved,
+        );
+        let candidates: Vec<_> = (0..10)
+            .map(|i| {
+                record(
+                    tenant_id,
+                    other_area,
+                    MemoryId::new_v7(),
+                    &format!("hit {i}"),
+                )
+            })
+            .collect();
+
+        let (results, truncated) = expand_cross_map_candidates(
+            active_area,
+            now,
+            &[CrossMapExpansionSource {
+                mapping: approved,
+                expires_at: None,
+                candidates,
+            }],
+            CrossMapExpansionBudget {
+                max_mappings: 1,
+                max_candidates_per_mapping: 2,
+                max_total_candidates: 2,
+            },
+        );
+        assert_eq!(results.len(), 2);
+        assert!(truncated);
     }
 }

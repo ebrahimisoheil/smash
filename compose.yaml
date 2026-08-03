@@ -31,6 +31,8 @@ services:
       - ./migrations/20260805100000_phase_e_retrieval.sql:/migrations/004_phase_e_retrieval.sql:ro
       - ./migrations/20260806100000_phase_e_live_retrieval.sql:/migrations/005_phase_e_live_retrieval.sql:ro
       - ./migrations/20260807100000_phase_e_provider_compatibility.sql:/migrations/006_phase_e_provider_compatibility.sql:ro
+      - ./migrations/20260808100000_phase_f_live_adapter.sql:/migrations/007_phase_f_live_adapter.sql:ro
+      - ./migrations/20260809100000_phase_e_performance_indexes.sql:/migrations/008_phase_e_performance_indexes.sql:ro
     entrypoint: ["/bin/sh", "-c"]
     command:
       - >-
@@ -46,6 +48,10 @@ services:
         --dbname=${POSTGRES_DB} --file=/migrations/005_phase_e_live_retrieval.sql
         && psql --host=postgres --username=${POSTGRES_USER}
         --dbname=${POSTGRES_DB} --file=/migrations/006_phase_e_provider_compatibility.sql
+        && psql --host=postgres --username=${POSTGRES_USER}
+        --dbname=${POSTGRES_DB} --file=/migrations/007_phase_f_live_adapter.sql
+        && psql --host=postgres --username=${POSTGRES_USER}
+        --dbname=${POSTGRES_DB} --file=/migrations/008_phase_e_performance_indexes.sql
 
   minio:
     image: minio/minio:RELEASE.2025-02-28T09-55-16Z
