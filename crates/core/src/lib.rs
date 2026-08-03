@@ -32,7 +32,7 @@ pub use maps::{
 pub mod entities;
 pub use entities::{
     EntityActivity, EntityDraftInput, EntityProposalPolicy, EntityReviewAction, EntityReviewError,
-    EntityStore, RelationshipDraftInput, RelationshipReviewAction,
+    EntityStore, IdentityGroup, RelationshipDraftInput, RelationshipReviewAction,
 };
 pub mod graph;
 pub use graph::{bounded_traverse, GraphBudget, GraphEdge, GraphNode, GraphPacket};
@@ -43,9 +43,10 @@ pub use cross_map::{
 };
 pub mod retrieval;
 pub use retrieval::{
-    enforce_benchmark_gate, light_search, retry_directive, ActorRole, AuthorizationContext,
-    BenchmarkCase, BenchmarkGateError, BenchmarkMetrics, BenchmarkThresholds, CircuitBreaker,
-    CircuitState, ConfigurationError, DegradedMode, DenseHit, DeterministicEmbeddingProvider,
+    enforce_benchmark_gate, expand_cross_map_candidates, light_search, retry_directive, ActorRole,
+    AuthorizationContext, BenchmarkCase, BenchmarkGateError, BenchmarkMetrics, BenchmarkThresholds,
+    CircuitBreaker, CircuitState, ConfigurationError, CrossMapExpansionBudget,
+    CrossMapExpansionSource, DegradedMode, DenseHit, DeterministicEmbeddingProvider,
     EmbeddingConfiguration, EmbeddingProfile, EmbeddingProvider, EmbeddingVector, FusionMode,
     LexicalHit, LexicalIndex, MemoryRecord, ProjectionAdapter, ProjectionIdentity, ProjectionStore,
     ProviderError, QueryEmbeddingCache, ReconciliationReport, RetrievalError, RetrievalPacket,

@@ -12,7 +12,7 @@ use engrave_contracts::{
     Relationship, RelationshipId, RelationshipState, TenantId,
 };
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -56,6 +56,16 @@ pub struct RelationshipDraftInput {
     pub governing_relations: Vec<MapRelationDefinition>,
 }
 
+/// A same-identity grouping of Area-local Entities, resolved from `Merge`
+/// lineage. Purely a presentation projection: no member is deleted, and
+/// every member's own kind/descriptor/origin remain intact and independently
+/// readable.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct IdentityGroup {
+    pub canonical: EntityId,
+    pub members: Vec<EntityId>,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct EntityActivity {
     pub action: String,
@@ -71,9 +81,18 @@ pub struct EntityActivity {
 #[serde(rename_all = "snake_case")]
 pub enum EntityReviewAction {
     Approve,
-    Reject { reason: String },
+    Reject {
+        reason: String,
+    },
     Retire,
-    Merge { into: EntityId },
+    Merge {
+        into: EntityId,
+    },
+    /// Reverses a prior `Merge`, restoring the record to `Active`. Same-
+    /// identity merging must be reversible without losing Area-local
+    /// records (Phase F non-negotiable decision #6) — this is that
+    /// reversal, not a new destructive action.
+    Unmerge,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -239,6 +258,52 @@ impl EntityStore {
         self.entities.get(&id).and_then(|record| record.merged_into)
     }
 
+    /// A reversible, presentation-only grouping of Area-local Entities by
+    /// same-identity `Merge` lineage. This never deletes, hides, or rewrites
+    /// an Area-local record — every member remains independently readable
+    /// via `entity()` — it only tells a caller which canonical entity a
+    /// chain of merges currently resolves to, so a UI can group them for
+    /// display and a reviewer can `Unmerge` any member back to `Active`.
+    /// Only groups with more than one member are returned; an entity with no
+    /// merge history is not "grouped" with itself.
+    pub fn identity_groups(&self) -> Vec<IdentityGroup> {
+        let mut groups: BTreeMap<EntityId, BTreeSet<EntityId>> = BTreeMap::new();
+        for id in self.entities.keys().copied() {
+            groups
+                .entry(self.resolve_canonical(id))
+                .or_default()
+                .insert(id);
+        }
+        groups
+            .into_iter()
+            .filter(|(_, members)| members.len() > 1)
+            .map(|(canonical, members)| IdentityGroup {
+                canonical,
+                members: members.into_iter().collect(),
+            })
+            .collect()
+    }
+
+    /// Follows `merged_into` links to the current root of a merge chain. A
+    /// cycle (which a correct caller should never produce, since `Merge`
+    /// requires the target to already exist and `Unmerge` clears the link)
+    /// is defensively broken rather than looped forever.
+    fn resolve_canonical(&self, id: EntityId) -> EntityId {
+        let mut current = id;
+        let mut seen = BTreeSet::from([current]);
+        while let Some(target) = self
+            .entities
+            .get(&current)
+            .and_then(|record| record.merged_into)
+        {
+            if !seen.insert(target) {
+                break;
+            }
+            current = target;
+        }
+        current
+    }
+
     pub fn activity(&self) -> &[EntityActivity] {
         &self.activity
     }
@@ -317,6 +382,17 @@ impl EntityStore {
                     "merge",
                     format!("merged into {}", into.as_uuid()),
                     Some(into),
+                )
+            }
+            EntityReviewAction::Unmerge => {
+                if current_state != EntityState::Merged {
+                    return Err(EntityReviewError::InvalidState);
+                }
+                (
+                    EntityState::Active,
+                    "unmerge",
+                    "reversed same-identity merge".to_string(),
+                    None,
                 )
             }
         };
@@ -694,6 +770,66 @@ mod tests {
         assert_eq!(store.merged_into(source), Some(target));
         assert!(store.activity().iter().any(|event| event.action == "merge"
             && event.merged_into == Some(target.as_uuid().to_string())));
+    }
+
+    #[test]
+    fn merge_is_reversible_and_identity_groups_reflect_it() {
+        let mut store = EntityStore::default();
+        let source = approved_entity(&mut store, "account", "agent");
+        let target = approved_entity(&mut store, "account", "agent");
+        let unrelated = approved_entity(&mut store, "account", "agent");
+
+        // Before any merge: no identity groups (nothing to group).
+        assert!(store.identity_groups().is_empty());
+
+        store
+            .review_entity(
+                source,
+                "agent",
+                2,
+                "merge",
+                EntityReviewAction::Merge { into: target },
+            )
+            .unwrap();
+
+        let groups = store.identity_groups();
+        assert_eq!(groups.len(), 1);
+        let group = &groups[0];
+        assert_eq!(group.canonical, target);
+        assert_eq!(
+            group
+                .members
+                .iter()
+                .copied()
+                .collect::<std::collections::BTreeSet<_>>(),
+            std::collections::BTreeSet::from([source, target])
+        );
+        assert!(!group.members.contains(&unrelated));
+
+        // Reversal: Unmerge restores Active and clears the identity group,
+        // without deleting or rewriting the Area-local record.
+        store
+            .review_entity(source, "agent", 3, "unmerge", EntityReviewAction::Unmerge)
+            .unwrap();
+        let restored = store.entity(source).unwrap();
+        assert_eq!(restored.state, EntityState::Active);
+        assert_eq!(restored.kind, "account");
+        assert_eq!(store.merged_into(source), None);
+        assert!(store.identity_groups().is_empty());
+        assert!(store
+            .activity()
+            .iter()
+            .any(|event| event.action == "unmerge" && event.merged_into.is_none()));
+    }
+
+    #[test]
+    fn unmerge_on_a_non_merged_entity_is_rejected() {
+        let mut store = EntityStore::default();
+        let id = approved_entity(&mut store, "account", "agent");
+        assert_eq!(
+            store.review_entity(id, "agent", 2, "unmerge", EntityReviewAction::Unmerge),
+            Err(EntityReviewError::InvalidState)
+        );
     }
 
     #[test]
