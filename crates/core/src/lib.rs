@@ -24,6 +24,11 @@ pub mod phase_c;
 pub use phase_c::{hex_hash, process_text};
 pub mod memory;
 pub use memory::{AdmissionPolicy, MemoryStore, ProposalInput, ReviewAction, ReviewError};
+pub mod maps;
+pub use maps::{
+    MapActivity, MapDraft, MapDraftInput, MapPublicationPolicy, MapReviewAction, MapReviewError,
+    MapStore,
+};
 pub mod retrieval;
 pub use retrieval::{
     enforce_benchmark_gate, light_search, retry_directive, ActorRole, AuthorizationContext,
