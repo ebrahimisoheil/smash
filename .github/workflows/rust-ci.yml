@@ -130,3 +130,23 @@ jobs:
 
       - name: Check generated OpenAPI artifact
         run: ./scripts/check-openapi.sh
+
+  retrieval-regression:
+    name: Retrieval fixture and security regression gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install pinned Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.97.1
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: .
+
+      - name: Run deterministic retrieval and authorization gate
+        run: cargo test -p engrave-core --test sales_fixture --locked
