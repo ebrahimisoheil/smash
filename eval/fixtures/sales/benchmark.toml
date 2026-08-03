@@ -1,0 +1,99 @@
+[meta]
+benchmark_id = "sales-phase-e-v1"
+fixture_id = "sales-phase-a-v1"
+schema_version = 1
+tenant_id = "018f0000-0000-7000-8000-000000000001"
+default_area_id = "018f0000-0000-7000-8000-000000000010"
+
+[eligibility]
+# Only the approved/current replacement is an active retrieval gold record.
+eligible_memory_ids = ["018f0000-0000-7000-8000-000000000302"]
+excluded_memory_ids = [
+  "018f0000-0000-7000-8000-000000000300",
+  "018f0000-0000-7000-8000-000000000301",
+]
+
+[[queries]]
+id = "renewal-executive-review"
+text = "What approval checkpoint does Acme require before renewal?"
+area_id = "018f0000-0000-7000-8000-000000000010"
+purpose = "sales_planning"
+gold_memory_ids = ["018f0000-0000-7000-8000-000000000302"]
+excluded_memory_ids = ["018f0000-0000-7000-8000-000000000300", "018f0000-0000-7000-8000-000000000301"]
+
+[[queries]]
+id = "renewal-security-signoff"
+text = "Is executive review plus security sign-off needed for the renewal?"
+area_id = "018f0000-0000-7000-8000-000000000010"
+purpose = "renewal_preparation"
+gold_memory_ids = ["018f0000-0000-7000-8000-000000000302"]
+excluded_memory_ids = ["018f0000-0000-7000-8000-000000000300", "018f0000-0000-7000-8000-000000000301"]
+
+[[queries]]
+id = "wrong-area-marketing"
+text = "What campaign approval process is active?"
+area_id = "018f0000-0000-7000-8000-000000000020"
+purpose = "marketing_planning"
+gold_memory_ids = []
+excluded_memory_ids = [
+  "018f0000-0000-7000-8000-000000000300",
+  "018f0000-0000-7000-8000-000000000301",
+  "018f0000-0000-7000-8000-000000000302",
+]
+
+[[profiles]]
+name = "lexical-only"
+channels = ["lexical"]
+fusion = "none"
+degraded_mode = "lexical_only"
+
+[[profiles]]
+name = "exact-dense"
+channels = ["dense_exact"]
+fusion = "none"
+degraded_mode = "none"
+
+[[profiles]]
+name = "rrf-baseline"
+channels = ["lexical", "dense_exact"]
+fusion = "rrf"
+rrf_k = 60
+degraded_mode = "none"
+
+[[profiles]]
+name = "weighted-comparison"
+channels = ["lexical", "dense_exact"]
+fusion = "weighted"
+alpha = 0.9
+degraded_mode = "none"
+
+[[profiles]]
+name = "rerank-comparison"
+channels = ["lexical", "dense_exact", "rerank"]
+fusion = "rrf"
+rrf_k = 60
+rerank_head = 30
+degraded_mode = "none"
+
+[exact_vector_reference]
+dimension = 3
+distance = "cosine"
+normalization = "l2"
+query_id = "renewal-security-signoff"
+expected_rank = [
+  "018f0000-0000-7000-8000-000000000302",
+  "018f0000-0000-7000-8000-000000000300",
+  "018f0000-0000-7000-8000-000000000301",
+]
+
+[[exact_vector_reference.vectors]]
+id = "018f0000-0000-7000-8000-000000000302"
+values = [1.0, 0.0, 0.0]
+
+[[exact_vector_reference.vectors]]
+id = "018f0000-0000-7000-8000-000000000300"
+values = [0.8, 0.6, 0.0]
+
+[[exact_vector_reference.vectors]]
+id = "018f0000-0000-7000-8000-000000000301"
+values = [0.0, 1.0, 0.0]

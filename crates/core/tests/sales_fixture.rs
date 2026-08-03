@@ -5,6 +5,7 @@ use serde::Deserialize;
 
 const FIXTURE: &str = include_str!("../../../eval/fixtures/sales/fixture.toml");
 const COVERAGE: &str = include_str!("../../../eval/fixtures/sales/coverage.md");
+const BENCHMARK: &str = include_str!("../../../eval/fixtures/sales/benchmark.toml");
 
 #[derive(Debug, Deserialize)]
 struct Fixture {
@@ -133,6 +134,70 @@ struct Concurrency {
     result: String,
 }
 
+#[derive(Debug, Deserialize)]
+struct Benchmark {
+    meta: BenchmarkMeta,
+    eligibility: Eligibility,
+    queries: Vec<Query>,
+    profiles: Vec<Profile>,
+    exact_vector_reference: ExactVectorReference,
+}
+
+#[derive(Debug, Deserialize)]
+struct BenchmarkMeta {
+    benchmark_id: String,
+    fixture_id: String,
+    schema_version: u8,
+    tenant_id: String,
+    default_area_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct Eligibility {
+    eligible_memory_ids: Vec<String>,
+    excluded_memory_ids: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct Query {
+    id: String,
+    text: String,
+    area_id: String,
+    purpose: String,
+    gold_memory_ids: Vec<String>,
+    excluded_memory_ids: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct Profile {
+    name: String,
+    channels: Vec<String>,
+    fusion: String,
+    #[serde(default)]
+    rrf_k: Option<u16>,
+    #[serde(default)]
+    alpha: Option<f32>,
+    #[serde(default)]
+    rerank_head: Option<u16>,
+    degraded_mode: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct ExactVectorReference {
+    dimension: usize,
+    distance: String,
+    normalization: String,
+    query_id: String,
+    expected_rank: Vec<String>,
+    vectors: Vec<VectorFixture>,
+}
+
+#[derive(Debug, Deserialize)]
+struct VectorFixture {
+    id: String,
+    values: Vec<f32>,
+}
+
 #[test]
 fn canonical_sales_fixture_is_deterministic_and_complete() {
     let fixture: Fixture = toml::from_str(FIXTURE).expect("fixture TOML must parse");
@@ -186,5 +251,133 @@ fn canonical_sales_fixture_is_deterministic_and_complete() {
             .count()
             - 2,
         13
+    );
+}
+
+#[test]
+fn phase_e_benchmark_manifest_is_deterministic_and_authorization_first() {
+    let benchmark: Benchmark = toml::from_str(BENCHMARK).expect("benchmark TOML must parse");
+    assert_eq!(benchmark.meta.benchmark_id, "sales-phase-e-v1");
+    assert_eq!(benchmark.meta.fixture_id, "sales-phase-a-v1");
+    assert_eq!(benchmark.meta.schema_version, 1);
+    assert_eq!(
+        benchmark.meta.tenant_id,
+        "018f0000-0000-7000-8000-000000000001"
+    );
+    assert_eq!(
+        benchmark.meta.default_area_id,
+        "018f0000-0000-7000-8000-000000000010"
+    );
+    assert_eq!(benchmark.eligibility.eligible_memory_ids.len(), 1);
+    assert_eq!(benchmark.eligibility.excluded_memory_ids.len(), 2);
+    assert_eq!(benchmark.queries.len(), 3);
+    assert!(benchmark.queries.iter().all(|query| !query.text.is_empty()));
+    assert!(benchmark
+        .queries
+        .iter()
+        .all(|query| !query.purpose.is_empty()));
+    assert!(benchmark.queries.iter().all(|query| {
+        query
+            .gold_memory_ids
+            .iter()
+            .all(|id| benchmark.eligibility.eligible_memory_ids.contains(id))
+    }));
+    let wrong_area = benchmark
+        .queries
+        .iter()
+        .find(|query| query.id == "wrong-area-marketing")
+        .expect("wrong-area query");
+    assert!(wrong_area.gold_memory_ids.is_empty());
+    assert_eq!(wrong_area.excluded_memory_ids.len(), 3);
+
+    let profile_names: Vec<_> = benchmark
+        .profiles
+        .iter()
+        .map(|profile| profile.name.as_str())
+        .collect();
+    assert_eq!(
+        profile_names,
+        vec![
+            "lexical-only",
+            "exact-dense",
+            "rrf-baseline",
+            "weighted-comparison",
+            "rerank-comparison",
+        ]
+    );
+    let rrf = benchmark
+        .profiles
+        .iter()
+        .find(|profile| profile.name == "rrf-baseline")
+        .expect("RRF profile");
+    assert_eq!(rrf.rrf_k, Some(60));
+    let weighted = benchmark
+        .profiles
+        .iter()
+        .find(|profile| profile.name == "weighted-comparison")
+        .expect("weighted profile");
+    assert_eq!(weighted.alpha, Some(0.9));
+    let rerank = benchmark
+        .profiles
+        .iter()
+        .find(|profile| profile.name == "rerank-comparison")
+        .expect("rerank profile");
+    assert_eq!(rerank.rerank_head, Some(30));
+    assert!(benchmark
+        .profiles
+        .iter()
+        .any(|profile| profile.degraded_mode == "lexical_only"));
+    assert!(benchmark
+        .profiles
+        .iter()
+        .all(|profile| !profile.channels.is_empty() && !profile.fusion.is_empty()));
+
+    let reference = benchmark.exact_vector_reference;
+    assert_eq!(reference.dimension, 3);
+    assert_eq!(reference.distance, "cosine");
+    assert_eq!(reference.normalization, "l2");
+    assert_eq!(reference.query_id, "renewal-security-signoff");
+    assert_eq!(reference.vectors.len(), reference.expected_rank.len());
+    assert!(reference
+        .vectors
+        .iter()
+        .all(|vector| vector.values.len() == reference.dimension));
+
+    let query = [1.0_f32, 0.0, 0.0];
+    let mut scored: Vec<_> = reference
+        .vectors
+        .iter()
+        .map(|vector| {
+            let norm = vector
+                .values
+                .iter()
+                .map(|value| value * value)
+                .sum::<f32>()
+                .sqrt();
+            let similarity = vector
+                .values
+                .iter()
+                .zip(query)
+                .map(|(value, query_value)| value * query_value)
+                .sum::<f32>()
+                / norm;
+            (vector.id.as_str(), similarity)
+        })
+        .collect();
+    scored.sort_by(|left, right| {
+        right
+            .1
+            .partial_cmp(&left.1)
+            .expect("fixture vectors must be finite")
+            .then_with(|| left.0.cmp(right.0))
+    });
+    let exact_rank: Vec<_> = scored.into_iter().map(|(id, _)| id).collect();
+    assert_eq!(
+        exact_rank,
+        reference
+            .expected_rank
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>()
     );
 }
