@@ -1,4 +1,4 @@
-# Contributing to SMASH V2
+# Contributing to ENGRAVE V2
 
 This covers the Rust workspace under `V2/`. For the V1 Python CLI/server,
 see the root `CONTRIBUTING.md`.
@@ -54,28 +54,28 @@ The workspace shape and dependency direction are fixed in
 [ADR-0004](docs/adr/0004-crate-boundaries-and-dependency-direction.md).
 The one rule every contributor must internalize:
 
-> **`smash-core` is framework-free. It compiles against `smash-contracts`,
+> **`engrave-core` is framework-free. It compiles against `engrave-contracts`,
 > `thiserror`, and `async-trait` — nothing else.**
 
 Concretely, **never add any of the following to `crates/core/Cargo.toml`**:
 
 - `axum` or `tower` / `tower-http` — HTTP framework and its middleware belong
-  in `smash-api` only.
-- `sqlx` — a SQL driver is a storage-adapter concern (`smash-storage`).
+  in `engrave-api` only.
+- `sqlx` — a SQL driver is a storage-adapter concern (`engrave-storage`).
 - `reqwest` — outbound HTTP is an adapter concern, not domain logic.
 - `lancedb` — retrieval-sidecar access is a storage-adapter concern.
 
 If your feature genuinely needs one of these from within domain logic, the
 domain logic is in the wrong crate, or it needs a port (a trait defined in
-`smash-core`, implemented in `smash-storage`) rather than a direct
+`engrave-core`, implemented in `engrave-storage`) rather than a direct
 dependency. This is not a style preference — `axum` and `tower-http` reaching
-`smash-core` is a hard CI failure via `cargo deny check` (`V2/deny.toml`),
-and `sqlx`/`tokio`/`reqwest`/`lancedb` reaching `smash-core` or
-`smash-contracts` is caught by the `check-core-boundary` CI job that walks
-`cargo tree -p smash-core`. Don't try to route around either check; fix the
+`engrave-core` is a hard CI failure via `cargo deny check` (`V2/deny.toml`),
+and `sqlx`/`tokio`/`reqwest`/`lancedb` reaching `engrave-core` or
+`engrave-contracts` is caught by the `check-core-boundary` CI job that walks
+`cargo tree -p engrave-core`. Don't try to route around either check; fix the
 layering instead.
 
-The same rule, one level up: `smash-contracts` stays free of `axum`, `sqlx`,
+The same rule, one level up: `engrave-contracts` stays free of `axum`, `sqlx`,
 and `tokio` too — it is the framework-free source of wire types shared by
 every surface, including future non-Rust clients that generate from its
 schemas.

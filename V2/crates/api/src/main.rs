@@ -1,6 +1,6 @@
 use axum::{routing::get, Json, Router};
+use engrave_contracts::SourceState;
 use serde::Serialize;
-use smash_contracts::SourceState;
 use utoipa::{OpenApi, ToSchema};
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -60,7 +60,7 @@ async fn health() -> Json<HealthResponse> {
 #[utoipa::path(get, path = "/v1/version", responses((status = 200, body = VersionResponse)))]
 async fn version() -> Json<VersionResponse> {
     Json(VersionResponse {
-        service: "smash-api",
+        service: "engrave-api",
         version: env!("CARGO_PKG_VERSION"),
     })
 }
@@ -69,7 +69,7 @@ async fn version() -> Json<VersionResponse> {
 #[openapi(
     paths(health, version, processing_states),
     components(schemas(HealthResponse, VersionResponse, ProcessingState, SourceState)),
-    info(title = "SMASH V2 API", version = env!("CARGO_PKG_VERSION"))
+    info(title = "ENGRAVE V2 API", version = env!("CARGO_PKG_VERSION"))
 )]
 struct ApiDoc;
 

@@ -28,7 +28,7 @@ Port V1 retrieval benchmarks **before** tuning. Compare lexical, semantic, and b
 The search contract and mathematical baseline are documented in
 [V2 retrieval algorithm](../../contracts/retrieval-algorithm.md) and
 [V2 retrieval mathematics](../../contracts/retrieval-math.md). The legacy
-`memory-smash` benchmark profile is a reproduction target only; its numbers do
+`memory-engrave` benchmark profile is a reproduction target only; its numbers do
 not become V2 evidence until the same profile is rerun with V2 identity,
 authorization, lifecycle, and fixture rules.
 

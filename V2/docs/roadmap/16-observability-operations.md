@@ -2,7 +2,7 @@
 
 > Source: SMASH_V2.md §17
 
-SMASH needs **two correlated observability systems** with different purposes and retention.
+ENGRAVE needs **two correlated observability systems** with different purposes and retention.
 
 | System | Purpose | Sampling | Sensitivity |
 |---|---|---|---|

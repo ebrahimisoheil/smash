@@ -46,7 +46,7 @@
 
 ## V1 behavioral reference
 
-The existing SMASH repository remains the behavioral reference for V1 contracts:
+The existing ENGRAVE repository remains the behavioral reference for V1 contracts:
 
 - [`README.md`](../../../README.md)
 - [`ARCHITECTURE.md`](../../../ARCHITECTURE.md)

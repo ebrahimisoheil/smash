@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-SMASH V2 replaces the V1 Python CLI/local server with a fresh Rust workspace
+ENGRAVE V2 replaces the V1 Python CLI/local server with a fresh Rust workspace
 (`V2/`). Before any crate is scaffolded, the team needs one settled answer for
 the core building blocks — HTTP framework, async runtime, middleware,
 serialization, database driver/migrations, auth, and outbound HTTP — so every
@@ -45,7 +45,7 @@ them requires a new ADR, not an ad-hoc substitution in a single crate.
 - Every crate that touches HTTP, async I/O, or the database uses the same
   primitives; there is one way to write a handler, one way to run a
   background task, one way to talk to Postgres.
-- `smash-core` stays framework-free by construction: none of Axum, Tower,
+- `engrave-core` stays framework-free by construction: none of Axum, Tower,
   SQLx, Reqwest, or LanceDB may appear in its dependency tree. This is
   enforced mechanically by `cargo deny` (`V2/deny.toml`) for Axum/tower-http
   and by the crate-graph shape itself (see ADR-0004) for the rest.

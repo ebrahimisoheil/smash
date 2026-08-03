@@ -80,6 +80,6 @@ Build:
 
 Provide enterprise dashboards that connect retrieved Memory and Rules to recommendations, application actions, business outcomes, and human corrections.
 
-**This capability is tenant-owned.** Enterprise Admin and AI Governance Admin receive broad oversight according to policy; Area Admins and Normal Users remain scoped. SMASH platform personnel have **no default content access**. Cross-tenant learning requires separate consent and privacy controls.
+**This capability is tenant-owned.** Enterprise Admin and AI Governance Admin receive broad oversight according to policy; Area Admins and Normal Users remain scoped. ENGRAVE platform personnel have **no default content access**. Cross-tenant learning requires separate consent and privacy controls.
 
 Detail: [16 — Observability and operations](16-observability-operations.md).

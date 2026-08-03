@@ -2,9 +2,9 @@
 //! one, so a lease recovery resumes from the last checkpoint without turning
 //! process observations into durable Memory.
 
-use smash_contracts::{OperationState, TenantId};
-use smash_core::process_text;
-use smash_storage::PgRepository;
+use engrave_contracts::{OperationState, TenantId};
+use engrave_core::process_text;
+use engrave_storage::PgRepository;
 use std::time::Duration;
 use uuid::Uuid;
 
@@ -13,11 +13,11 @@ const MAX_BYTES: usize = 10 * 1024 * 1024;
 const MAX_CHUNKS: usize = 10_000;
 
 fn env_tenant() -> Result<TenantId, String> {
-    let value =
-        std::env::var("SMASH_TENANT_ID").map_err(|_| "SMASH_TENANT_ID is required".to_owned())?;
+    let value = std::env::var("ENGRAVE_TENANT_ID")
+        .map_err(|_| "ENGRAVE_TENANT_ID is required".to_owned())?;
     Uuid::parse_str(&value)
         .map(TenantId::new)
-        .map_err(|_| "SMASH_TENANT_ID must be a UUID".to_owned())
+        .map_err(|_| "ENGRAVE_TENANT_ID must be a UUID".to_owned())
 }
 
 async fn process_once(repository: &PgRepository, tenant_id: TenantId) -> Result<bool, String> {
@@ -45,7 +45,7 @@ async fn process_once(repository: &PgRepository, tenant_id: TenantId) -> Result<
     let processor_name = payload
         .get("processor_name")
         .and_then(|v| v.as_str())
-        .unwrap_or("smash-text");
+        .unwrap_or("engrave-text");
     let processor_version = payload
         .get("processor_version")
         .and_then(|v| v.as_str())
@@ -283,14 +283,15 @@ async fn process_once(repository: &PgRepository, tenant_id: TenantId) -> Result<
 
 #[tokio::main]
 async fn main() {
-    let database_url = std::env::var("SMASH_DATABASE_URL").expect("SMASH_DATABASE_URL is required");
+    let database_url =
+        std::env::var("ENGRAVE_DATABASE_URL").expect("ENGRAVE_DATABASE_URL is required");
     let tenant_id = env_tenant().expect("invalid worker tenant configuration");
     let repository = PgRepository::connect(&database_url)
         .await
         .expect("worker cannot connect to postgres");
     loop {
         if let Err(error) = process_once(&repository, tenant_id).await {
-            eprintln!("smash-worker processing error: {error}");
+            eprintln!("engrave-worker processing error: {error}");
         }
         tokio::time::sleep(Duration::from_millis(250)).await;
     }
@@ -302,7 +303,7 @@ mod tests {
 
     #[test]
     fn worker_limits_are_bounded() {
-        assert_eq!(smash_core::hex_hash(b"smash").len(), 64);
+        assert_eq!(engrave_core::hex_hash(b"engrave").len(), 64);
         const {
             assert!(MAX_BYTES > 0 && MAX_CHUNKS > 0 && LEASE_SECONDS > 0);
         }

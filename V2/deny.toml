@@ -1,4 +1,4 @@
-# cargo-deny configuration for the SMASH V2 workspace.
+# cargo-deny configuration for the ENGRAVE V2 workspace.
 #
 # The `[[bans.deny]]` entry for `axum` below is the primary mechanical
 # enforcement for the "core is framework-free" invariant from
@@ -7,20 +7,20 @@
 # not depend on Axum"). If someone adds `axum = "..."` to
 # crates/core/Cargo.toml (directly or via a new transitive edge), `cargo
 # deny check bans` MUST fail. This is what session A1's acceptance check
-# verifies: plant an axum import in smash-core, confirm `cargo deny check`
+# verifies: plant an axum import in engrave-core, confirm `cargo deny check`
 # fails, then remove it.
 #
 # `wrappers` below is set to the ONLY workspace crate allowed to be axum's
-# direct dependent — `smash-api`. Verified empirically via `cargo tree -i
+# direct dependent — `engrave-api`. Verified empirically via `cargo tree -i
 # axum`: today axum has exactly one dependent in the whole resolved graph
-# (`smash-api`), so this ban has zero false positives against the current
+# (`engrave-api`), so this ban has zero false positives against the current
 # dependency tree.
 #
 # `tower-http` and the rest of the ADR-0004 table (contracts/core must also
 # stay free of sqlx, tokio, reqwest, and lancedb) are deliberately NOT
 # enforced here with a matching `bans.deny` entry. Verified empirically
 # (`cargo tree -i tower-http`, `cargo tree -i reqwest`) that both are
-# already pulled into the graph several hops deep through `smash-storage`'s
+# already pulled into the graph several hops deep through `engrave-storage`'s
 # own dependencies — e.g. `lancedb` vendors `reqwest`, which itself pulls a
 # second copy of `tower-http`, via `lance-namespace-reqwest-client`. A
 # global `deny` on those names would either require listing every
@@ -28,11 +28,11 @@
 # lancedb/reqwest upgrade that reshuffles its dependency tree) or produce
 # false-positive CI failures unrelated to the actual invariant we care
 # about. Because our own workspace crate graph is a strict DAG (contracts <-
-# core <- storage <- {api, worker, mcp}) and `smash-core` only ever depends
-# on `smash-contracts`, none of those crates can structurally reach
-# `smash-core` unless someone edits `crates/core/Cargo.toml` directly —
+# core <- storage <- {api, worker, mcp}) and `engrave-core` only ever depends
+# on `engrave-contracts`, none of those crates can structurally reach
+# `engrave-core` unless someone edits `crates/core/Cargo.toml` directly —
 # which is exactly what the CI step `check-core-boundary` (see
-# .github/workflows/rust-ci.yml) catches via `cargo tree -p smash-core`,
+# .github/workflows/rust-ci.yml) catches via `cargo tree -p engrave-core`,
 # asserting none of axum/tower/tower-http/sqlx/tokio/reqwest/lancedb appear
 # in core's own dependency subtree. Treat that CI step and this file as one
 # combined enforcement mechanism, not two independent ones — `cargo deny
@@ -104,8 +104,8 @@ allow-wildcard-paths = true
 
 [[bans.deny]]
 name = "axum"
-wrappers = ["smash-api"]
-use-instead = "axum may only be a direct dependency of smash-api — see ADR-0004"
+wrappers = ["engrave-api"]
+use-instead = "axum may only be a direct dependency of engrave-api — see ADR-0004"
 
 # ---------------------------------------------------------------------------
 # Sources — where dependencies may come from.

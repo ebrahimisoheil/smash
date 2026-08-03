@@ -27,6 +27,6 @@ not reimplement policy.
 
 ## Responses
 
-Success responses use resource DTOs from `smash-contracts`. Errors use the
+Success responses use resource DTOs from `engrave-contracts`. Errors use the
 structured body defined in `error-model.md`. Bodies never include private
 Source content, raw tokens, or secret material.

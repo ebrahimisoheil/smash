@@ -24,7 +24,7 @@ Conflating these creates untrustworthy systems:
 - If embeddings become the only representation, users cannot inspect or migrate their data.
 - If the graph becomes canonical truth, extraction errors become structural errors.
 
-Boundaries SMASH must preserve:
+Boundaries ENGRAVE must preserve:
 
 - Original source bytes remain immutable evidence.
 - Extracted text and chunks are derived representations.
@@ -53,13 +53,13 @@ Every durable Memory explains why it exists.
 - describes when the decision applies;
 - defines what change would trigger review.
 
-The reason improves trust, review quality, retrieval, and future supersession. It lets a new employee or agent distinguish a deliberate decision from a copied sentence. It also makes aggressive search explainable: SMASH can return not only what it found, but why the team previously considered it worth remembering.
+The reason improves trust, review quality, retrieval, and future supersession. It lets a new employee or agent distinguish a deliberate decision from a copied sentence. It also makes aggressive search explainable: ENGRAVE can return not only what it found, but why the team previously considered it worth remembering.
 
 ## 2.4 Forgetting is a feature
 
 Human memory is useful partly because it is selective. Agent memory should also expire, decay, become stale, be contradicted, and be superseded.
 
-Deleting history is not the default. SMASH separates **what is active** from **what is historically preserved**:
+Deleting history is not the default. ENGRAVE separates **what is active** from **what is historically preserved**:
 
 - Temporary context receives an expiry date.
 - Time-sensitive facts receive a review date.
@@ -69,11 +69,11 @@ Deleting history is not the default. SMASH separates **what is active** from **w
 
 ## 2.5 Local ownership and managed convenience share one contract
 
-The Community Edition must be genuinely useful, not a demo whose essential features require the cloud. A team must be able to run SMASH with Docker Compose, own its PostgreSQL database and MinIO objects, use local or configured models, and connect agents through MCP.
+The Community Edition must be genuinely useful, not a demo whose essential features require the cloud. A team must be able to run ENGRAVE with Docker Compose, own its PostgreSQL database and MinIO objects, use local or configured models, and connect agents through MCP.
 
 The managed service sells **operational value**: identity, collaboration, SSO, connectors, scaling, managed workers, backups, observability, policy administration, compliance, and support. It must not require a different Memory model.
 
-Exporting from managed SMASH to Community Edition preserves Sources, Memory, Maps, Rules, events, and stable identifiers wherever policy permits.
+Exporting from managed ENGRAVE to Community Edition preserves Sources, Memory, Maps, Rules, events, and stable identifiers wherever policy permits.
 
 ## 2.6 Bounded context beats corpus dumping
 

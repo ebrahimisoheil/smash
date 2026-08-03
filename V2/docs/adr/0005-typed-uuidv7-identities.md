@@ -9,7 +9,7 @@ Accepted
 The domain contains many identifiers that must not be confused at API or
 storage boundaries: tenants, actors, Areas, Sources, Memories, Proposals,
 Rules, Operations, AI Runs, and Events. The roadmap also requires identifiers
-to remain stable when data moves from Community Edition to managed SMASH.
+to remain stable when data moves from Community Edition to managed ENGRAVE.
 
 Human-readable slugs are useful in URLs and the UI, but they are mutable,
 non-unique across scopes, and not an authorization boundary. A single UUID

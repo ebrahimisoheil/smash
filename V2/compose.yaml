@@ -1,4 +1,4 @@
-name: smash-v2
+name: engrave-v2
 
 services:
   postgres:
@@ -8,9 +8,9 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
-      - "${SMASH_POSTGRES_PORT}:5432"
+      - "${ENGRAVE_POSTGRES_PORT}:5432"
     volumes:
-      - smash_postgres:/var/lib/postgresql/data
+      - engrave_postgres:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
@@ -30,7 +30,7 @@ services:
     entrypoint: ["/bin/sh", "-c"]
     command:
       - >-
-        exec psql --host=postgres --username=${POSTGRES_USER}
+        psql --host=postgres --username=${POSTGRES_USER}
         --dbname=${POSTGRES_DB} --file=/migrations/001_initial_schema.sql
         && psql --host=postgres --username=${POSTGRES_USER}
         --dbname=${POSTGRES_DB} --file=/migrations/002_phase_c_pipeline.sql
@@ -39,13 +39,13 @@ services:
     image: minio/minio:RELEASE.2025-02-28T09-55-16Z
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: ${SMASH_MINIO_ROOT_USER}
-      MINIO_ROOT_PASSWORD: ${SMASH_MINIO_ROOT_PASSWORD}
+      MINIO_ROOT_USER: ${ENGRAVE_MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${ENGRAVE_MINIO_ROOT_PASSWORD}
     ports:
-      - "${SMASH_MINIO_PORT}:9000"
-      - "${SMASH_MINIO_CONSOLE_PORT}:9001"
+      - "${ENGRAVE_MINIO_PORT}:9000"
+      - "${ENGRAVE_MINIO_CONSOLE_PORT}:9001"
     volumes:
-      - smash_minio:/data
+      - engrave_minio:/data
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 5s
@@ -59,7 +59,7 @@ services:
         condition: service_healthy
     entrypoint: ["/bin/sh", "-c"]
     command:
-      - "mc alias set local http://minio:9000 ${SMASH_MINIO_ROOT_USER} ${SMASH_MINIO_ROOT_PASSWORD} && mc mb --ignore-existing local/${SMASH_MINIO_BUCKET}"
+      - "mc alias set local http://minio:9000 ${ENGRAVE_MINIO_ROOT_USER} ${ENGRAVE_MINIO_ROOT_PASSWORD} && mc mb --ignore-existing local/${ENGRAVE_MINIO_BUCKET}"
 
   api:
     build:
@@ -67,12 +67,12 @@ services:
       dockerfile: Dockerfile
     entrypoint: ["/app/api"]
     environment:
-      SMASH_ENVIRONMENT: ${SMASH_ENVIRONMENT}
-      SMASH_DATABASE_URL: ${SMASH_DATABASE_URL}
-      SMASH_MINIO_ENDPOINT: ${SMASH_MINIO_ENDPOINT}
-      SMASH_MINIO_BUCKET: ${SMASH_MINIO_BUCKET}
+      ENGRAVE_ENVIRONMENT: ${ENGRAVE_ENVIRONMENT}
+      ENGRAVE_DATABASE_URL: ${ENGRAVE_DATABASE_URL}
+      ENGRAVE_MINIO_ENDPOINT: ${ENGRAVE_MINIO_ENDPOINT}
+      ENGRAVE_MINIO_BUCKET: ${ENGRAVE_MINIO_BUCKET}
     ports:
-      - "${SMASH_API_PORT}:3000"
+      - "${ENGRAVE_API_PORT}:3000"
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -85,11 +85,11 @@ services:
       dockerfile: Dockerfile
     entrypoint: ["/app/worker"]
     environment:
-      SMASH_ENVIRONMENT: ${SMASH_ENVIRONMENT}
-      SMASH_DATABASE_URL: ${SMASH_DATABASE_URL}
-      SMASH_MINIO_ENDPOINT: ${SMASH_MINIO_ENDPOINT}
-      SMASH_MINIO_BUCKET: ${SMASH_MINIO_BUCKET}
-      SMASH_TENANT_ID: ${SMASH_TENANT_ID}
+      ENGRAVE_ENVIRONMENT: ${ENGRAVE_ENVIRONMENT}
+      ENGRAVE_DATABASE_URL: ${ENGRAVE_DATABASE_URL}
+      ENGRAVE_MINIO_ENDPOINT: ${ENGRAVE_MINIO_ENDPOINT}
+      ENGRAVE_MINIO_BUCKET: ${ENGRAVE_MINIO_BUCKET}
+      ENGRAVE_TENANT_ID: ${ENGRAVE_TENANT_ID}
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -103,11 +103,11 @@ services:
     environment:
       NEXT_PUBLIC_API_BASE_URL: http://api:3000
     ports:
-      - "${SMASH_WEB_PORT}:3000"
+      - "${ENGRAVE_WEB_PORT}:3000"
     depends_on:
       api:
         condition: service_started
 
 volumes:
-  smash_postgres:
-  smash_minio:
+  engrave_postgres:
+  engrave_minio:

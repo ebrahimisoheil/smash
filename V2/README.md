@@ -1,4 +1,4 @@
-# SMASH V2 Workspace
+# ENGRAVE V2 Workspace
 
 This is the V2 workspace. It exists alongside the current (V1) SMASH workspace at the repository root.
 
@@ -22,7 +22,7 @@ The backend stack in one line:
 
 > **Axum + Tokio + Tower + SQLx + Serde + Utoipa**
 
-| SMASH concern | Rust choice |
+| ENGRAVE concern | Rust choice |
 |---|---|
 | API framework | Axum |
 | Async runtime | Tokio |
@@ -44,6 +44,11 @@ All planning, philosophy, architecture, and phase documentation lives in [`docs/
 Start with [`docs/roadmap/README.md`](docs/roadmap/README.md).
 
 The source document for everything in `docs/roadmap/` is [`../SMASH_V2.md`](../SMASH_V2.md).
+
+The Engrave rename is a clean local cutover. It uses fresh `engrave_*` named
+volumes; existing `smash_*` volumes are left untouched and are not adopted
+automatically. Export/import is required if old local data must be carried
+forward.
 
 ## Classification rule for anything brought forward from V1
 

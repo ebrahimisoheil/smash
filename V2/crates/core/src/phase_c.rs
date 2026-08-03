@@ -5,8 +5,8 @@
 //! makes retry, lease recovery, and resume contract-testable without a live
 //! database.
 
+use engrave_contracts::{ArtifactId, ChunkId, OperationId, OperationState, SourceId, SourceState};
 use sha2::{Digest, Sha256};
-use smash_contracts::{ArtifactId, ChunkId, OperationId, OperationState, SourceId, SourceState};
 use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Clone, Debug, Eq, PartialEq)]

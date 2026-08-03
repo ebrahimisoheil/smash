@@ -20,10 +20,10 @@ The following decisions are **normative for V2 unless replaced by an explicit ar
 | 12 | Rules are enforced mechanically outside the model. | [10](10-rules-harness.md) |
 | 13 | MCP is an adapter, connector, and distribution layer — **not the product moat**. | [12](12-mcp-skills-prompts-connectors.md) |
 | 14 | Indexes and projections are disposable; canonical records and evidence are portable. | [05 §5.3](05-storage-responsibilities.md#53-lancedb-is-a-rebuildable-retrieval-sidecar) |
-| 15 | Community Edition and managed SMASH share the same domain contract. | [02 §2.5](02-philosophy.md#25-local-ownership-and-managed-convenience-share-one-contract) |
+| 15 | Community Edition and managed ENGRAVE share the same domain contract. | [02 §2.5](02-philosophy.md#25-local-ownership-and-managed-convenience-share-one-contract) |
 | 16 | Managed PostgreSQL comes up once with a shared schema and mandatory tenant isolation; enterprises are provisioned as **data and policy**, not hand-built databases. | [05 §5.4](05-storage-responsibilities.md#54-tenant-provisioning-and-placement) |
 | 17 | LanceDB is tenant-scoped through a trusted namespace and placement record; users receive roles inside the tenant rather than personal vector stores. | [05 §5.3](05-storage-responsibilities.md#53-lancedb-is-a-rebuildable-retrieval-sidecar) |
-| 18 | Enterprise Admin and AI Governance Admin are **customer** roles with tenant-wide oversight according to policy; SMASH platform operators have no default customer-content access. | [15](15-auth-security.md) |
+| 18 | Enterprise Admin and AI Governance Admin are **customer** roles with tenant-wide oversight according to policy; ENGRAVE platform operators have no default customer-content access. | [15](15-auth-security.md) |
 | 19 | AI runs, decision envelopes, Rule evaluations, tool calls, and outcomes are canonical tenant product records, separate from sampled operational telemetry. | [16](16-observability-operations.md) |
 | 20 | Future AI Tracer, replay, and decision analytics must be possible from V2 records **without requiring raw cross-tenant surveillance**. | [16 §16.3–16.4](16-observability-operations.md#163-ai-tracer-and-replay) |
 | 21 | The domain and application core is a **framework-free Rust crate**. Axum, the worker, and the MCP adapter are surfaces over it; none of them owns Memory logic or authorization. | [06 §6.1](06-service-architecture.md#61-rust-and-axum-are-the-product-backend) |
@@ -32,7 +32,7 @@ The following decisions are **normative for V2 unless replaced by an explicit ar
 
 Normative defaults for decision 4:
 
-| SMASH concern | Rust choice |
+| ENGRAVE concern | Rust choice |
 |---|---|
 | API framework | Axum |
 | Async runtime | Tokio |

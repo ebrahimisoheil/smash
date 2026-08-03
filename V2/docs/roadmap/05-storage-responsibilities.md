@@ -41,7 +41,7 @@ The managed default is **one PostgreSQL deployment with a shared schema** — no
 - PostgreSQL Row-Level Security provides defense in depth with **default-deny** policies.
 - The application role must **not** own the protected tables and must **not** hold `BYPASSRLS` — table owners ordinarily bypass row policies.
 
-Enterprise Admin, AI Governance Admin, Area Admin, Normal User, and agent permissions are resolved *within* the tenant. An Enterprise Admin's broader access changes the permitted Area and visibility set; it never permits access to a different tenant. SMASH platform operators use separate operational identities and have no normal content-reading policy.
+Enterprise Admin, AI Governance Admin, Area Admin, Normal User, and agent permissions are resolved *within* the tenant. An Enterprise Admin's broader access changes the permitted Area and visibility set; it never permits access to a different tenant. ENGRAVE platform operators use separate operational identities and have no normal content-reading policy.
 
 ### Access and migrations
 
@@ -95,7 +95,7 @@ In a multi-tenant deployment, isolation is enforced by application authorization
 
 ### Versioning and deletion
 
-Object versioning and retention behavior must be documented. SMASH application-level Source versions remain canonical even if the object store also versions objects.
+Object versioning and retention behavior must be documented. ENGRAVE application-level Source versions remain canonical even if the object store also versions objects.
 
 Application hard deletion must coordinate PostgreSQL metadata, derived indexes, MinIO objects, and audit requirements.
 

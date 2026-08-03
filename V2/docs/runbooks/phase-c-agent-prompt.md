@@ -1,6 +1,6 @@
 # Phase C Agent Handoff Prompt
 
-You are the Phase C implementation agent for SMASH V2.
+You are the Phase C implementation agent for ENGRAVE V2.
 
 ## Branch contract
 
@@ -12,21 +12,21 @@ or delete branches unless explicitly instructed.
 
 Use Obsidian MCP and read these notes in order:
 
-1. `SMASH V2/Plans/Phase B Progress.md`
-2. `SMASH V2/Phases/Phase C.md`
-3. `SMASH V2/Roadmap/06 Service Architecture.md`
-4. `SMASH V2/Roadmap/04 Domain Model.md`
-5. `SMASH V2/Roadmap/07 Source Ingestion.md`
-6. `SMASH V2/Roadmap/13 API Principles.md`
-7. `SMASH V2/Roadmap/15 Auth and Security.md`
-8. `SMASH V2/Roadmap/16 Observability and Operations.md`
-9. `SMASH V2/Roadmap/17 Testing and Evaluation.md`
+1. `ENGRAVE V2/Plans/Phase B Progress.md`
+2. `ENGRAVE V2/Phases/Phase C.md`
+3. `ENGRAVE V2/Roadmap/06 Service Architecture.md`
+4. `ENGRAVE V2/Roadmap/04 Domain Model.md`
+5. `ENGRAVE V2/Roadmap/07 Source Ingestion.md`
+6. `ENGRAVE V2/Roadmap/13 API Principles.md`
+7. `ENGRAVE V2/Roadmap/15 Auth and Security.md`
+8. `ENGRAVE V2/Roadmap/16 Observability and Operations.md`
+9. `ENGRAVE V2/Roadmap/17 Testing and Evaluation.md`
 
 For long-running-agent behavior, also read:
 
-10. `SMASH V2/Roadmap/10 Rules and Harness.md`
-11. `SMASH V2/Roadmap/11 Agent Session Contract.md`
-12. `SMASH V2/Roadmap/12 MCP Skills Prompts Connectors.md`
+10. `ENGRAVE V2/Roadmap/10 Rules and Harness.md`
+11. `ENGRAVE V2/Roadmap/11 Agent Session Contract.md`
+12. `ENGRAVE V2/Roadmap/12 MCP Skills Prompts Connectors.md`
 
 ## Scope
 

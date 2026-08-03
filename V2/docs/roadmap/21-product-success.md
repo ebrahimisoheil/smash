@@ -10,7 +10,7 @@
 
 Activation is **not** account creation or Source upload. Activation is the full loop:
 
-1. a Source enters SMASH;
+1. a Source enters ENGRAVE;
 2. a meaningful Memory is proposed with evidence and reason;
 3. a user approves it;
 4. a different session or agent retrieves it at the right moment;

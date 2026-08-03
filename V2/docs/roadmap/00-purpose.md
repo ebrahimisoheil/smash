@@ -2,7 +2,7 @@
 
 > Source: SMASH_V2.md §1
 
-This roadmap defines what SMASH V2 is, why it should exist, which parts of the current SMASH implementation should survive, which architectural boundaries should change, and how the new system should be built in capability phases.
+This roadmap defines what ENGRAVE V2 is, why it should exist, which parts of the current ENGRAVE implementation should survive, which architectural boundaries should change, and how the new system should be built in capability phases.
 
 It is intentionally more durable than a backlog. A backlog answers what the team will do next. This roadmap answers what the product means and what must remain true as its implementation changes.
 
@@ -45,7 +45,7 @@ The backend stack in one line:
 
 > **Axum + Tokio + Tower + SQLx + Serde + Utoipa**
 
-| SMASH concern | Rust choice |
+| ENGRAVE concern | Rust choice |
 |---|---|
 | API framework | Axum |
 | Async runtime | Tokio |

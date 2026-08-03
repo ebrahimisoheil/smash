@@ -9,9 +9,9 @@ An **Enterprise tenant** is the customer organization and primary ownership boun
 - A tenant is identified by an opaque, immutable `tenant_id`.
 - A human-readable slug is **presentation metadata** and must never be the security boundary.
 
-The Enterprise tenant is different from the SMASH platform. An Acme Enterprise Admin may be authorized to oversee all Acme data, while a SMASH platform operator has **no automatic right** to read Acme content. Unified infrastructure means shared operational services, not shared human visibility.
+The Enterprise tenant is different from the ENGRAVE platform. An Acme Enterprise Admin may be authorized to oversee all Acme data, while a ENGRAVE platform operator has **no automatic right** to read Acme content. Unified infrastructure means shared operational services, not shared human visibility.
 
-Community Edition operates as one built-in tenant with one initial Enterprise Admin. The same tenant, role, and placement contracts exist from the beginning so Community Edition data can move to managed SMASH **without changing identifiers or meaning**.
+Community Edition operates as one built-in tenant with one initial Enterprise Admin. The same tenant, role, and placement contracts exist from the beginning so Community Edition data can move to managed ENGRAVE **without changing identifiers or meaning**.
 
 ## 4.2 Enterprise roles and memberships
 
@@ -24,7 +24,7 @@ Enterprise access is role- and Area-based. Minimum role model:
 | **Area Admin** | Administers content, Map versions, Rules, review, and traces inside assigned Areas |
 | **Normal User** | Uses assigned Areas, adds Sources, searches permitted Memory, reviews assigned Proposals, inspects permitted activity |
 | **Agent or service identity** | Receives explicit machine scopes for Areas, Source classes, retrieval, proposals, and tools |
-| **SMASH platform operator** | Maintains infrastructure; has **no default customer-content permission** |
+| **ENGRAVE platform operator** | Maintains infrastructure; has **no default customer-content permission** |
 
 An enterprise may configure exceptional private Areas that remain restricted from ordinary enterprise-wide administrators — a customer policy decision. The architecture must support a customer-controlled `read_all_tenant_content` capability as well as explicit exclusions.
 

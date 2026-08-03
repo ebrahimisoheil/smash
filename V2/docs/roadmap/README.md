@@ -1,11 +1,11 @@
-# SMASH V2 Roadmap
+# ENGRAVE V2 Roadmap
 
 > **Status:** implementation source of truth for the V2 workspace
 > **Audience:** founder, contributors, design partners, and future maintainers
 > **Scope:** Community Edition first; managed scale, SSO, and enterprise operations second
 > **Excludes:** delivery dates, sprint estimates, and file-by-file coding instructions
 
-This roadmap defines what SMASH V2 is, why it should exist, which parts of the current SMASH implementation should survive, which architectural boundaries should change, and how the new system should be built in capability phases.
+This roadmap defines what ENGRAVE V2 is, why it should exist, which parts of the current ENGRAVE implementation should survive, which architectural boundaries should change, and how the new system should be built in capability phases.
 
 It is derived from [`SMASH_V2.md`](../../../SMASH_V2.md) at the repository root, decomposed into working documents.
 
@@ -54,7 +54,7 @@ It is derived from [`SMASH_V2.md`](../../../SMASH_V2.md) at the repository root,
 
 ## The one-sentence positioning
 
-> Notion stores what a team writes. Jira tracks what a team does. SMASH governs what its agents remember.
+> Notion stores what a team writes. Jira tracks what a team does. ENGRAVE governs what its agents remember.
 
 ## The backend stack in one line
 

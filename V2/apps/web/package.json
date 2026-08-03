@@ -1,8 +1,8 @@
 {
-  "name": "smash-web",
+  "name": "engrave-web",
   "version": "0.1.0",
   "private": true,
-  "description": "Phase A build-verifying placeholder for the SMASH V2 Next.js application. No real UI — see V2/docs/roadmap/14-web-application.md for what this becomes. Client of the smash-api HTTP contract only; never talks to the database directly (V2/docs/adr/0004-crate-boundaries-and-dependency-direction.md).",
+  "description": "Phase A build-verifying placeholder for the ENGRAVE V2 Next.js application. No real UI — see V2/docs/roadmap/14-web-application.md for what this becomes. Client of the engrave-api HTTP contract only; never talks to the database directly (V2/docs/adr/0004-crate-boundaries-and-dependency-direction.md).",
   "scripts": {
     "build": "next build",
     "dev": "next dev",

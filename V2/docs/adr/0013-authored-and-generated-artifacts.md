@@ -6,7 +6,7 @@ Date: 2026-08-02
 ## Decision
 
 Rust domain types, configuration schemas, ADRs, and SQL migrations are
-authored artifacts. OpenAPI is generated from `smash-contracts` through
+authored artifacts. OpenAPI is generated from `engrave-contracts` through
 Utoipa. The committed OpenAPI description is tested in CI and drift is a
 failure. Generated output is never hand-edited to conceal a type mismatch.
 

@@ -14,7 +14,7 @@ append an immutable `Event` in the same transaction as the state change.
 
 ## Decision
 
-Every state-changing command in `smash-core` produces an explicit event intent
+Every state-changing command in `engrave-core` produces an explicit event intent
 as part of its result or mutation contract. The `storage` adapter persists the
 aggregate change and the corresponding event atomically in one PostgreSQL
 transaction. A command is successful only when both writes commit; neither is

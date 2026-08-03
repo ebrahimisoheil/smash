@@ -8,8 +8,8 @@
 
 use async_trait::async_trait;
 use aws_sdk_s3::{primitives::ByteStream, Client as S3Client};
-use smash_contracts::{OperationId, OperationState, TenantId};
-use smash_core::{
+use engrave_contracts::{OperationId, OperationState, TenantId};
+use engrave_core::{
     ApplicationError, DomainEvent, IdempotencyKey, ObjectStore, Repository, VersionToken,
 };
 use sqlx::{postgres::PgPoolOptions, PgPool, Row};
@@ -571,7 +571,7 @@ impl ObjectStore for S3ObjectStore {
 
 /// Compatibility marker retained from the Phase A scaffold.
 pub fn storage_crate_placeholder() -> &'static str {
-    "smash-contracts"
+    "engrave-contracts"
 }
 
 #[cfg(test)]
@@ -606,6 +606,6 @@ mod tests {
 
     #[test]
     fn links_against_core() {
-        assert_eq!(storage_crate_placeholder(), "smash-contracts");
+        assert_eq!(storage_crate_placeholder(), "engrave-contracts");
     }
 }

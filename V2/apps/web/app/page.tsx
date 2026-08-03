@@ -1,7 +1,7 @@
 export default function Home() {
   return (
     <main>
-      <h1>SMASH V2</h1>
+      <h1>ENGRAVE V2</h1>
       <p>Source processing is explicit and never presented as durable Memory.</p>
       <section aria-labelledby="processing-heading">
         <h2 id="processing-heading">Processing states</h2>

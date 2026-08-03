@@ -103,7 +103,7 @@ jobs:
           set -euo pipefail
           forbidden='(^|[[:space:]])(axum|tower|tower-http|sqlx|tokio|reqwest|lancedb) v'
 
-          for package in smash-core smash-contracts; do
+          for package in engrave-core engrave-contracts; do
             echo "Dependency tree for ${package}:"
             cargo tree --package "${package}" --locked
 

@@ -3,7 +3,7 @@
 ## Status and provenance
 
 This document is the Phase E algorithm contract. It carries forward the
-measured retrieval structure from the legacy `memory-smash` project, while
+measured retrieval structure from the legacy `memory-engrave` project, while
 replacing legacy storage and identity assumptions with the V2 contracts.
 
 The algorithm is deliberately provider-neutral. A provider, embedding model,

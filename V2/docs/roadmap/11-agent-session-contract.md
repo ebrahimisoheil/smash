@@ -2,7 +2,7 @@
 
 > Source: SMASH_V2.md §12
 
-SMASH defines **one portable agent loop, independent of host application**.
+ENGRAVE defines **one portable agent loop, independent of host application**.
 
 ## Session start
 

@@ -1,11 +1,11 @@
 [package]
-name = "smash-worker"
+name = "engrave-worker"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
-description = "Tokio job loop over smash-core and smash-storage. Must never depend on Axum."
+description = "Tokio job loop over engrave-core and engrave-storage. Must never depend on Axum."
 
 [[bin]]
 name = "worker"
@@ -13,9 +13,9 @@ path = "src/main.rs"
 
 [dependencies]
 async-trait = "0.1.91"
-smash-contracts = { path = "../contracts" }
-smash-core = { path = "../core" }
-smash-storage = { path = "../storage" }
+engrave-contracts = { path = "../contracts" }
+engrave-core = { path = "../core" }
+engrave-storage = { path = "../storage" }
 serde_json = "1.0.145"
 tokio = { version = "1.53.1", features = ["rt-multi-thread", "macros", "signal"] }
 uuid = { version = "1.24.0", features = ["v7"] }

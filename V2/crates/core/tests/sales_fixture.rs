@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
+use engrave_contracts::{Origin, ProposalState, RuleEffect, SourceState};
 use serde::Deserialize;
-use smash_contracts::{Origin, ProposalState, RuleEffect, SourceState};
 
 const FIXTURE: &str = include_str!("../../../eval/fixtures/sales/fixture.toml");
 const COVERAGE: &str = include_str!("../../../eval/fixtures/sales/coverage.md");
