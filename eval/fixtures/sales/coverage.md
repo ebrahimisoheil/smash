@@ -15,3 +15,4 @@
 | Idempotent replay | Replay record | Repeated key returns the original result |
 | Optimistic concurrency conflict | Concurrency record | Stale reviewed version produces `resource.version_conflict` |
 | Trust provenance distinguishable | `origin` fields | `observed`, `inferred`, `proposed`, and `approved` are all present |
+| Structured objects retain the Map version that interpreted them | Sales entities, relationship, and Cross-Map mapping | Every Entity/Relationship/Cross-Map row references a declared, published `map_version` |
