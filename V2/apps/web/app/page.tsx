@@ -14,6 +14,7 @@ export default function Home() {
         </ul>
       </section>
       <p>Processor output creates artifacts and proposals; it does not activate Memory.</p>
+      <p><a href="/review">Open the Review queue</a> to inspect and explicitly admit proposals.</p>
     </main>
   );
 }

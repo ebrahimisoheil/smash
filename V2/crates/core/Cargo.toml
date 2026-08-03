@@ -10,6 +10,7 @@ description = "Framework-free domain and application services: Memory lifecycle,
 [dependencies]
 async-trait = "0.1.91"
 sha2 = "0.10.9"
+serde = { version = "1.0.229", features = ["derive"] }
 engrave-contracts = { path = "../contracts" }
 thiserror = "2.0.19"
 time = { version = "0.3.55", features = ["serde"] }

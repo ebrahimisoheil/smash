@@ -22,6 +22,8 @@ pub fn core_crate_placeholder() -> &'static str {
 
 pub mod phase_c;
 pub use phase_c::{hex_hash, process_text};
+pub mod memory;
+pub use memory::{AdmissionPolicy, MemoryStore, ProposalInput, ReviewAction, ReviewError};
 
 /// Stable machine-readable application error codes. The HTTP mapping belongs
 /// to the API adapter; this enum is transport-independent.
