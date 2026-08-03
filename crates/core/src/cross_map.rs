@@ -34,10 +34,11 @@ use engrave_contracts::{
     AreaId, CrossMapMapping, CrossMapMappingId, CrossMapMappingState, CrossMapRelation,
     MapVersionId, TenantId,
 };
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use time::OffsetDateTime;
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct CrossMapProposalInput {
     pub tenant_id: TenantId,
     pub source_area_id: AreaId,
@@ -49,7 +50,8 @@ pub struct CrossMapProposalInput {
     pub proposer: String,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
 pub enum CrossMapReviewAction {
     Approve { expires_at: Option<OffsetDateTime> },
     Reject { reason: String },

@@ -258,6 +258,29 @@ impl EntityStore {
         self.entities.get(&id).and_then(|record| record.merged_into)
     }
 
+    /// All Entities currently recorded for one Area, in every lifecycle
+    /// state. Board and graph views filter by state/authorization
+    /// themselves; this is the raw Area-local snapshot they read from.
+    pub fn entities_in_area(&self, area_id: AreaId) -> Vec<Entity> {
+        self.entities
+            .values()
+            .map(|record| &record.entity)
+            .filter(|entity| entity.area_id == area_id)
+            .cloned()
+            .collect()
+    }
+
+    /// All Relationships currently recorded for one Area, in every lifecycle
+    /// state.
+    pub fn relationships_in_area(&self, area_id: AreaId) -> Vec<Relationship> {
+        self.relationships
+            .values()
+            .map(|record| &record.relationship)
+            .filter(|relationship| relationship.area_id == area_id)
+            .cloned()
+            .collect()
+    }
+
     /// A reversible, presentation-only grouping of Area-local Entities by
     /// same-identity `Merge` lineage. This never deletes, hides, or rewrites
     /// an Area-local record — every member remains independently readable
