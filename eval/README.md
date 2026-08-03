@@ -1,7 +1,15 @@
 # V2 Eval Fixtures
 
-Placeholder directory for the evaluation/benchmark fixture set (Phase A: near-empty).
+The Sales fixture is the deterministic Phase E retrieval corpus. The lifecycle
+fixture remains the canonical source of entities, evidence, and review history;
+`fixtures/sales/benchmark.toml` adds retrieval queries, eligibility expectations,
+comparison profiles, and a tiny exact-vector reference corpus.
 
-This will hold the canonical Sales fixture and related benchmark scenarios once Phase C
-introduces retrieval and rule evaluation. Nothing here yet — Phase A only establishes the
-directory so downstream phases have a stable location to write into.
+The benchmark manifest is intentionally provider-neutral. Its vectors are a
+correctness reference only, not a production embedding model or dimension
+decision. A retrieval implementation must apply the manifest's authorization,
+Area, lifecycle, and applicability exclusions before ranking candidates.
+
+Phase E metrics are defined in `docs/contracts/retrieval-math.md`: Recall@5/10,
+MRR, nDCG@10, latency percentiles, packet tokens, unauthorized-result rate,
+wrong-Area rate, and visible degraded-mode behavior.
