@@ -1,12 +1,12 @@
 //! Framework-free domain and application contracts.
 //!
-//! `smash-core` owns policy, authorization decisions, application errors, and
+//! `engrave-core` owns policy, authorization decisions, application errors, and
 //! ports. Adapters in API, worker, and storage depend on these contracts; core
 //! never depends on a web framework, database driver, or async runtime.
 #![forbid(unsafe_code)]
 
 use async_trait::async_trait;
-use smash_contracts::{
+use engrave_contracts::{
     AgentIdentityId, EventId, OperationId, RuleEffect, RuleId, RuleVersionId, TenantId,
 };
 use std::fmt;
@@ -17,8 +17,13 @@ use uuid::Uuid;
 /// Compatibility marker used by the Phase A storage scaffold. Real adapters
 /// depend on the ports below; this value is not a business service.
 pub fn core_crate_placeholder() -> &'static str {
-    "smash-contracts"
+    "engrave-contracts"
 }
+
+pub mod phase_c;
+pub use phase_c::{hex_hash, process_text};
+pub mod memory;
+pub use memory::{AdmissionPolicy, MemoryStore, ProposalInput, ReviewAction, ReviewError};
 
 /// Stable machine-readable application error codes. The HTTP mapping belongs
 /// to the API adapter; this enum is transport-independent.

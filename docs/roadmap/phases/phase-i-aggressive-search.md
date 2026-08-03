@@ -1,6 +1,6 @@
 # Phase I — Aggressive Search
 
-> Source: SMASH_V2.md §20, Phase I
+> Source: the historical roadmap source §20, Phase I
 
 ## Goal
 

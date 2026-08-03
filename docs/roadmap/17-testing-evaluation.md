@@ -1,6 +1,6 @@
 # 17 — Testing and Evaluation Strategy
 
-> Source: SMASH_V2.md §18
+> Source: the historical roadmap source §18
 
 Testing follows **product invariants**, not framework layers alone.
 

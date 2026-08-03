@@ -1,8 +1,8 @@
 # 16 — AI Decision Observability and Operations
 
-> Source: SMASH_V2.md §17
+> Source: the historical roadmap source §17
 
-SMASH needs **two correlated observability systems** with different purposes and retention.
+ENGRAVE needs **two correlated observability systems** with different purposes and retention.
 
 | System | Purpose | Sampling | Sensitivity |
 |---|---|---|---|
@@ -10,13 +10,6 @@ SMASH needs **two correlated observability systems** with different purposes and
 | **Tenant decision ledger** | Canonical product data: what an agent was trying to accomplish, which exact context it received, why those records were selected, which Rules and approvals applied, what it recommended or executed, what application outcome followed | **Not sampled away** | Content access follows enterprise roles and retention policy |
 
 Operational telemetry uses logs, metrics, and OpenTelemetry-compatible spans, emitted through the Rust `tracing` ecosystem with an OpenTelemetry exporter. Span context is established by a Tower layer so every handler, job, and outbound call inherits it without manual plumbing.
-
-Long-running agent processes also have a product-facing execution view backed
-by canonical Operations, AI Runs, Events, checkpoints, retained evidence, and
-outcomes. The view supports progress, pause/resume, cancellation, failure
-recovery, and policy/revocation visibility. It distinguishes execution state
-from durable Memory so users can see what the agent observed, saved as
-evidence, or proposed for admission.
 
 ## Structured logging and metrics
 

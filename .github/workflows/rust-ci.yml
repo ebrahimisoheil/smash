@@ -103,7 +103,7 @@ jobs:
           set -euo pipefail
           forbidden='(^|[[:space:]])(axum|tower|tower-http|sqlx|tokio|reqwest|lancedb) v'
 
-          for package in smash-core smash-contracts; do
+          for package in engrave-core engrave-contracts; do
             echo "Dependency tree for ${package}:"
             cargo tree --package "${package}" --locked
 
@@ -119,9 +119,6 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-
-      - name: Install protobuf compiler
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
 
       - name: Install pinned Rust toolchain
         uses: dtolnay/rust-toolchain@master

@@ -2242,6 +2242,86 @@ dependencies = [
 ]
 
 [[package]]
+name = "engrave-api"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "engrave-contracts",
+ "engrave-core",
+ "engrave-storage",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tower",
+ "tower-http 0.7.0",
+ "utoipa",
+ "uuid",
+]
+
+[[package]]
+name = "engrave-contracts"
+version = "0.1.0"
+dependencies = [
+ "garde",
+ "serde",
+ "serde_json",
+ "time",
+ "utoipa",
+ "uuid",
+]
+
+[[package]]
+name = "engrave-core"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "engrave-contracts",
+ "serde",
+ "sha2 0.10.9",
+ "thiserror 2.0.19",
+ "time",
+ "toml",
+ "uuid",
+]
+
+[[package]]
+name = "engrave-mcp"
+version = "0.1.0"
+dependencies = [
+ "engrave-contracts",
+ "engrave-core",
+ "engrave-storage",
+]
+
+[[package]]
+name = "engrave-storage"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "aws-sdk-s3",
+ "engrave-contracts",
+ "engrave-core",
+ "lancedb",
+ "serde_json",
+ "sha2 0.10.9",
+ "sqlx",
+ "uuid",
+]
+
+[[package]]
+name = "engrave-worker"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "engrave-contracts",
+ "engrave-core",
+ "engrave-storage",
+ "serde_json",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "equivalent"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5805,81 +5885,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8ed6a63f02c8539c91a8685a86f4099661ba3da017932f6ebbea6de3f0fa7c90"
 dependencies = [
  "serde",
-]
-
-[[package]]
-name = "smash-api"
-version = "0.1.0"
-dependencies = [
- "axum",
- "serde",
- "serde_json",
- "smash-contracts",
- "smash-core",
- "smash-storage",
- "tokio",
- "tower",
- "tower-http 0.7.0",
- "utoipa",
-]
-
-[[package]]
-name = "smash-contracts"
-version = "0.1.0"
-dependencies = [
- "garde",
- "serde",
- "serde_json",
- "time",
- "utoipa",
- "uuid",
-]
-
-[[package]]
-name = "smash-core"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "serde",
- "smash-contracts",
- "thiserror 2.0.19",
- "time",
- "toml",
- "uuid",
-]
-
-[[package]]
-name = "smash-mcp"
-version = "0.1.0"
-dependencies = [
- "smash-contracts",
- "smash-core",
- "smash-storage",
-]
-
-[[package]]
-name = "smash-storage"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "aws-sdk-s3",
- "lancedb",
- "smash-contracts",
- "smash-core",
- "sqlx",
- "tokio",
- "uuid",
-]
-
-[[package]]
-name = "smash-worker"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "smash-contracts",
- "smash-core",
- "smash-storage",
- "tokio",
 ]
 
 [[package]]

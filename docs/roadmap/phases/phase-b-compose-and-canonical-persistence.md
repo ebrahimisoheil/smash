@@ -1,6 +1,6 @@
 # Phase B — Docker Compose and Canonical Persistence
 
-> Source: SMASH_V2.md §20, Phase B
+> Source: the historical roadmap source §20, Phase B
 
 ## Goal
 

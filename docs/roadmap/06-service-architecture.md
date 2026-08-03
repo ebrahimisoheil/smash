@@ -1,6 +1,6 @@
 # 06 — Service Architecture
 
-> Source: SMASH_V2.md §7
+> Source: the historical roadmap source §7
 
 ## 6.1 Rust and Axum are the product backend
 
@@ -10,7 +10,7 @@ The backend is a Rust workspace. **Axum** exposes the canonical HTTP API, authen
 
 > **Axum + Tokio + Tower + SQLx + Serde + Utoipa**
 
-| SMASH concern | Rust choice | Notes |
+| ENGRAVE concern | Rust choice | Notes |
 |---|---|---|
 | API framework | **Axum** | Routing, extractors, typed handlers; the canonical HTTP surface |
 | Async runtime | **Tokio** | One runtime shared by API, worker, and connector I/O |

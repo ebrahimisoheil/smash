@@ -6,16 +6,16 @@ Accepted
 
 ## Context
 
-SMASH V2 replaces the V1 Python CLI/local server with a fresh Rust workspace
-(`V2/`). Before any crate is scaffolded, the team needs one settled answer for
+ENGRAVE V2 replaces the V1 Python CLI/local server with a fresh Rust workspace
+(``). Before any crate is scaffolded, the team needs one settled answer for
 the core building blocks — HTTP framework, async runtime, middleware,
 serialization, database driver/migrations, auth, and outbound HTTP — so every
 crate is written against the same primitives from the first commit instead of
 accreting inconsistent choices crate-by-crate.
 
-The roadmap (`V2/docs/roadmap/06-service-architecture.md` §6.1 and
-`V2/docs/roadmap/13-api-principles.md`) already names a normative crate
-selection sourced from `SMASH_V2.md` §7. This ADR ratifies that selection as
+The roadmap (`docs/roadmap/06-service-architecture.md` §6.1 and
+`docs/roadmap/13-api-principles.md`) already names a normative crate
+selection sourced from `the historical roadmap source` §7. This ADR ratifies that selection as
 the binding stack decision for the workspace scaffolded in session A1.
 
 ## Decision
@@ -45,9 +45,9 @@ them requires a new ADR, not an ad-hoc substitution in a single crate.
 - Every crate that touches HTTP, async I/O, or the database uses the same
   primitives; there is one way to write a handler, one way to run a
   background task, one way to talk to Postgres.
-- `smash-core` stays framework-free by construction: none of Axum, Tower,
+- `engrave-core` stays framework-free by construction: none of Axum, Tower,
   SQLx, Reqwest, or LanceDB may appear in its dependency tree. This is
-  enforced mechanically by `cargo deny` (`V2/deny.toml`) for Axum/tower-http
+  enforced mechanically by `cargo deny` (`deny.toml`) for Axum/tower-http
   and by the crate-graph shape itself (see ADR-0004) for the rest.
 - SQLx's compile-time query checking requires either a live database or an
   offline query cache (`SQLX_OFFLINE=true` plus `.sqlx/`) to build in CI —

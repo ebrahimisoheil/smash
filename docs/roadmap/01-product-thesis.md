@@ -1,6 +1,6 @@
 # 01 — The Product Thesis
 
-> Source: SMASH_V2.md §2
+> Source: the historical roadmap source §2
 
 ## The problem
 
@@ -18,13 +18,13 @@ None of these mechanisms alone decides:
 - which evidence supports it;
 - which actions it must never perform.
 
-SMASH is the layer that makes those decisions explicit.
+ENGRAVE is the layer that makes those decisions explicit.
 
 ## The category
 
 **Agent memory control plane.**
 
-SMASH sits between source systems and agent runtimes:
+ENGRAVE sits between source systems and agent runtimes:
 
 1. It accepts evidence from local files, uploads, APIs, connectors, and MCP resources.
 2. It turns evidence into reviewable Proposals.
@@ -35,15 +35,15 @@ SMASH sits between source systems and agent runtimes:
 
 ## The positioning sentence
 
-> Notion stores what a team writes. Jira tracks what a team does. SMASH governs what its agents remember.
+> Notion stores what a team writes. Jira tracks what a team does. ENGRAVE governs what its agents remember.
 
-## What SMASH deliberately is not
+## What ENGRAVE deliberately is not
 
-SMASH does not compete by becoming:
+ENGRAVE does not compete by becoming:
 
 - a general document editor;
 - a project tracker;
 - a CRM;
 - a full agent runtime.
 
-Those categories are already mature. SMASH connects to them, preserves them as Sources, and provides the governed memory layer they do not independently provide **across agent vendors**.
+Those categories are already mature. ENGRAVE connects to them, preserves them as Sources, and provides the governed memory layer they do not independently provide **across agent vendors**.

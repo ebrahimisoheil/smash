@@ -18,7 +18,7 @@ token material.
 
 ## Decision
 
-`smash-core` owns one authoritative `AppError` enum. Domain and application
+`engrave-core` owns one authoritative `AppError` enum. Domain and application
 ports return this type (or a domain-specific error converted into it); adapters
 may add transport context only at the boundary. The enum is converted exactly
 once into the API error body.

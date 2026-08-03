@@ -1,6 +1,6 @@
 # Phase F — Maps, Graph, and Cross-Map
 
-> Source: SMASH_V2.md §20, Phase F
+> Source: the historical roadmap source §20, Phase F
 
 ## Goal
 

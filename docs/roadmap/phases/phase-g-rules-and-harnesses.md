@@ -1,6 +1,6 @@
 # Phase G — Rules and Harnesses
 
-> Source: SMASH_V2.md §20, Phase G
+> Source: the historical roadmap source §20, Phase G
 
 ## Goal
 
@@ -17,16 +17,7 @@ Implement:
 - decision records;
 - test fixtures.
 
-Define one admission contract with two user-facing routes: conversational
-confirmation for high-impact mutations, and UI review for deferred, complex, or
-batched proposals. Activating a Rule/Harness, forgetting or materially
-superseding Memory, and consequential durable decisions must ask the user or
-remain unactivated.
-
-Integrate Rules into **retrieval, Source disclosure, writes, external tool
-calls, and long-running agent processes**. Long-running processes have bounded
-Area, tool, time, cost, schedule, checkpoint, and write scopes, with mechanical
-pause and revocation.
+Integrate Rules into **retrieval, Source disclosure, writes, and external tool calls**.
 
 ### Pre-tool gateway
 
@@ -41,10 +32,7 @@ Create a pre-tool gateway that host integrations, MCP consumers, and native conn
 - [ ] Global locked restrictions cannot be weakened by Area Rules.
 - [ ] Conflicts fail closed and create Review work.
 - [ ] Rule tests run before activation.
-- [ ] Conversational confirmation and UI review produce the same decision record and cannot bypass the harness.
 - [ ] **The killer demo can block publication of private Source evidence.**
-- [ ] A long-running agent cannot exceed its Area, tool, time, cost, or write
-  scope, and can be paused or revoked mechanically.
 
 ## References
 

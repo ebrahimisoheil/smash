@@ -1,6 +1,6 @@
 # Phase D — Memory Lifecycle and Review
 
-> Source: SMASH_V2.md §20, Phase D
+> Source: the historical roadmap source §20, Phase D
 
 ## Goal
 
@@ -27,12 +27,6 @@ Build the **Review UI** and the **universal saved-record surface**.
 
 Port V1 lifecycle fixtures and behavioral tests.
 
-Long-running agents may produce checkpoints, evidence, and selective Proposals
-while a process runs. They do not write every observation into Memory. A
-personal-Area ontology or Memory change can become durable only through the
-confirmed admission policy; shared and Cross-Map changes retain their stricter
-approval routes.
-
 ## Acceptance criteria
 
 - [ ] Agents and ingestion can propose but **cannot silently activate** Memory.
@@ -41,8 +35,6 @@ approval routes.
 - [ ] Supersession produces a complete lineage and excludes the old record from default recall.
 - [ ] Expiry and applicability behave deterministically.
 - [ ] Every decision is explainable through Activity.
-- [ ] A long-running process can create selective Proposals and retained
-  evidence without silently activating Memory.
 
 ## References
 

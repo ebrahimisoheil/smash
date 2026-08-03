@@ -1,6 +1,6 @@
 # 05 — Canonical Storage Responsibilities
 
-> Source: SMASH_V2.md §6
+> Source: the historical roadmap source §6
 
 ## 5.1 PostgreSQL is canonical
 
@@ -41,7 +41,7 @@ The managed default is **one PostgreSQL deployment with a shared schema** — no
 - PostgreSQL Row-Level Security provides defense in depth with **default-deny** policies.
 - The application role must **not** own the protected tables and must **not** hold `BYPASSRLS` — table owners ordinarily bypass row policies.
 
-Enterprise Admin, AI Governance Admin, Area Admin, Normal User, and agent permissions are resolved *within* the tenant. An Enterprise Admin's broader access changes the permitted Area and visibility set; it never permits access to a different tenant. SMASH platform operators use separate operational identities and have no normal content-reading policy.
+Enterprise Admin, AI Governance Admin, Area Admin, Normal User, and agent permissions are resolved *within* the tenant. An Enterprise Admin's broader access changes the permitted Area and visibility set; it never permits access to a different tenant. ENGRAVE platform operators use separate operational identities and have no normal content-reading policy.
 
 ### Access and migrations
 
@@ -95,7 +95,7 @@ In a multi-tenant deployment, isolation is enforced by application authorization
 
 ### Versioning and deletion
 
-Object versioning and retention behavior must be documented. SMASH application-level Source versions remain canonical even if the object store also versions objects.
+Object versioning and retention behavior must be documented. ENGRAVE application-level Source versions remain canonical even if the object store also versions objects.
 
 Application hard deletion must coordinate PostgreSQL metadata, derived indexes, MinIO objects, and audit requirements.
 
@@ -164,10 +164,9 @@ Initially every managed tenant can point to the same shared services with differ
 
 | Tier | Description |
 |---|---|
-| Community Edition | Single-tenant self-hosted |
-| Standard SaaS | Multi-tenant hosted with logical isolation |
-| Dedicated Hosted | Single-tenant hosted placement operated by SMASH |
-| Enterprise | Shared or dedicated placement by contract |
+| Community Edition | Single tenant |
+| Standard SaaS | Shared infrastructure with logical isolation |
+| Enterprise | Shared or dedicated placement |
 | Regulated | Dedicated placement |
 
 ### Deletion

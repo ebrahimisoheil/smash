@@ -1,15 +1,8 @@
 # 20 — Post-Community Managed Service Focus
 
-> Source: SMASH_V2.md §21
+> Source: the historical roadmap source §21
 
 After Community Edition is credible and used, the managed service focuses on **operational and organizational capabilities rather than redefining Memory**.
-
-The managed product supports both multi-tenant hosted and single-tenant
-hosted deployments. Single-tenant hosted reserves a customer's placement and
-operational boundary without changing tenant IDs, APIs, Maps, Memory, or
-authorization semantics. It is a first-class managed tier for customers that
-need dedicated resources, residency, encryption-key ownership, or stronger
-operational isolation.
 
 ## 20.1 Multi-tenancy and scale
 
@@ -87,6 +80,6 @@ Build:
 
 Provide enterprise dashboards that connect retrieved Memory and Rules to recommendations, application actions, business outcomes, and human corrections.
 
-**This capability is tenant-owned.** Enterprise Admin and AI Governance Admin receive broad oversight according to policy; Area Admins and Normal Users remain scoped. SMASH platform personnel have **no default content access**. Cross-tenant learning requires separate consent and privacy controls.
+**This capability is tenant-owned.** Enterprise Admin and AI Governance Admin receive broad oversight according to policy; Area Admins and Normal Users remain scoped. ENGRAVE platform personnel have **no default content access**. Cross-tenant learning requires separate consent and privacy controls.
 
 Detail: [16 — Observability and operations](16-observability-operations.md).

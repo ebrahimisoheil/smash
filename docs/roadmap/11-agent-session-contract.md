@@ -1,8 +1,8 @@
 # 11 — Agent Session Contract
 
-> Source: SMASH_V2.md §12
+> Source: the historical roadmap source §12
 
-SMASH defines **one portable agent loop, independent of host application**.
+ENGRAVE defines **one portable agent loop, independent of host application**.
 
 ## Session start
 
@@ -26,24 +26,6 @@ The agent or hook may capture observations and generate **Proposals**.
 **It must not activate durable Memory without an explicit admission policy.**
 
 Duplicate, echo, and trivial-session guards from V1 are preserved and adapted to the new event model.
-
-## Admission and approval channel
-
-The UI is an important review surface, but it is not the only place where
-approval can happen. MCP and UI clients use the same admission operation.
-
-- Low-risk candidates remain **Proposal-only** and do not interrupt the chat.
-- High-impact mutations trigger an in-conversation confirmation when the user
-  is present: the agent explains the proposed change, scope, evidence,
-  permanence, and consequences, then asks for an explicit yes/no decision.
-- The user may choose **review in UI** for batch, complex, or deferred review.
-- The agent must ask before activating a Rule/Harness, forgetting or materially
-  superseding Memory, storing a sensitive or consequential preference/decision,
-  or performing an irreversible external action.
-
-Conversational confirmation and UI approval create the same durable decision
-envelope and re-check authorization, Rules, scope, and version immediately
-before mutation. A post-hook never silently activates a durable mutation.
 
 ## Request identity
 

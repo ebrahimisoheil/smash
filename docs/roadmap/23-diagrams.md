@@ -1,6 +1,6 @@
 # 23 — Architecture Diagrams
 
-> Source: SMASH_V2.md §24
+> Source: the historical roadmap source §24
 
 **These diagrams are part of the implementation contract. Update them when a service boundary or data responsibility changes.**
 
@@ -15,7 +15,7 @@ flowchart LR
         ExtMCP[External MCP resources]
     end
 
-    subgraph Smash[SMASH V2]
+    subgraph Engrave[ENGRAVE V2]
         Library[Source Library]
         Pipeline[Ingestion and extraction]
         Review[Proposal and Review]
@@ -280,7 +280,7 @@ flowchart LR
 ```mermaid
 sequenceDiagram
     participant Agent
-    participant Harness as SMASH Rule Harness
+    participant Harness as ENGRAVE Rule Harness
     participant Memory as Memory and Source services
     participant Tool as External MCP tool
     participant Events as Activity log
@@ -337,7 +337,7 @@ flowchart TB
         Other[Other MCP clients]
     end
 
-    Skills[SMASH skills and prompts]
+    Skills[ENGRAVE skills and prompts]
     LocalMCP[Community MCP server: stdio]
     RemoteMCP[Managed MCP server: Streamable HTTP + OAuth]
     Core[Rust application core crate]
@@ -404,7 +404,7 @@ erDiagram
 
 ```mermaid
 flowchart TB
-    subgraph Platform[Shared SMASH platform]
+    subgraph Platform[Shared ENGRAVE platform]
         API[Axum services]
         Worker[Workers]
         PG[(Shared PostgreSQL schema)]
@@ -468,7 +468,7 @@ flowchart TD
     AreaAdmin[Area Admin]
     User[Normal User]
     Agent[Agent or service identity]
-    PlatformOperator[SMASH platform operator]
+    PlatformOperator[ENGRAVE platform operator]
 
     AllContent[All tenant content allowed by enterprise policy]
     AllTraces[All tenant AI traces and analytics]

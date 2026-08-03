@@ -1,6 +1,6 @@
 # Error model and stable registry
 
-`smash-core` owns one application error enum. The API has one mapping from that
+`engrave-core` owns one application error enum. The API has one mapping from that
 enum to HTTP status and this body shape:
 
 ```json

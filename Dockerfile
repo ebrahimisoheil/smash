@@ -1,8 +1,8 @@
 # syntax=docker/dockerfile:1
 #
-# Multi-stage build for the SMASH V2 Rust workspace: one dependency-cached
-# build produces both the `api` and `worker` binaries (`smash-api`,
-# `smash-worker`), copied into a slim runtime image.
+# Multi-stage build for the ENGRAVE V2 Rust workspace: one dependency-cached
+# build produces both the `api` and `worker` binaries (`engrave-api`,
+# `engrave-worker`), copied into a slim runtime image.
 #
 # Phase A note: this Dockerfile builds the current skeleton crates (stub
 # main.rs bodies, no real routes/job loop). It exists to prove the build
@@ -10,7 +10,7 @@
 # Compose file, no schema, no secrets wiring. That's Phase B+.
 #
 # Build (from repo root):
-#   docker build -f V2/Dockerfile -t smash-v2:dev V2
+#   docker build -f Dockerfile -t engrave-v2:dev .
 
 # Pinned by digest (multi-arch index digest for the `1.97.1-slim-bookworm`
 # tag, resolved via `docker buildx imagetools inspect
@@ -60,13 +60,13 @@ FROM debian:bookworm-slim@sha256:7b140f374b289a7c2befc338f42ebe6441b7ea838a042bb
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
-    && useradd --system --create-home --uid 10001 smash
+    && useradd --system --create-home --uid 10001 engrave
 
 WORKDIR /app
 COPY --from=builder /app/target/release/api ./api
 COPY --from=builder /app/target/release/worker ./worker
 
-USER smash
+USER engrave
 ENV RUST_LOG=info
 
 # The image ships both binaries; the entrypoint (and therefore whether this

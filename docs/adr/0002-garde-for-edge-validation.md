@@ -12,7 +12,7 @@ candidates the roadmap already narrowed to. Both are derive-macro-based
 validation crates for Rust structs and are broadly comparable on the basics
 (string length, numeric ranges, required fields, email/URL formats).
 
-SMASH's edge validation is not purely structural, though. Several of the
+ENGRAVE's edge validation is not purely structural, though. Several of the
 validation rules the roadmap anticipates are **context-aware**: a Rule body's
 validity depends on which tenant it belongs to, and a Memory or Map mutation's
 validity depends on the Map's current version (optimistic concurrency,
@@ -39,11 +39,11 @@ handler layer, and without validating twice (once shallow at the edge, once
 
 ## Consequences
 
-- Contract types in `smash-contracts` derive `garde::Validate` where request
-  bodies need validation; Axum handlers in `smash-api` call `.validate(&ctx)`
+- Contract types in `engrave-contracts` derive `garde::Validate` where request
+  bodies need validation; Axum handlers in `engrave-api` call `.validate(&ctx)`
   with a context built from Tower-layer-resolved request state (tenant,
   expected Map version, etc.) before invoking application services.
-- `smash-contracts` depends on `garde` with the `derive` feature. This is a
+- `engrave-contracts` depends on `garde` with the `derive` feature. This is a
   small, framework-independent dependency — it does not violate `core`'s
   framework-free constraint (ADR-0004) since context-aware validation is
   itself edge/contract concern, not domain logic.
@@ -59,7 +59,7 @@ handler layer, and without validating twice (once shallow at the edge, once
   only the field value being validated (or, with more recent versions, a
   fixed struct-level context type declared once per struct), which does not
   cleanly support the "same struct, different valid context depending on
-  which tenant/Map-version is in scope" shape SMASH needs without resorting
+  which tenant/Map-version is in scope" shape ENGRAVE needs without resorting
   to constructing a different struct per context or manual second-pass
   validation in the service layer — reintroducing the layering problem this
   ADR exists to avoid.

@@ -4,10 +4,10 @@
 
 ## Context
 
-The V2 workspace and its Obsidian planning namespace were initially branded
-SMASH. The product name is now Engrave. V2 is still separate from the legacy
-root workspace, so the rename must be complete inside V2 without rewriting V1
-files or the root `SMASH_V2.md` source document.
+The workspace and its Obsidian planning namespace were initially branded
+SMASH. The product name is now Engrave, and this repository contains only the
+Engrave V2 workspace. Legacy V1 files and the historical roadmap source are
+outside the repository boundary.
 
 ## Decision
 
@@ -25,8 +25,8 @@ preserve compatibility aliases. Existing local `smash_*` Docker volumes are
 left untouched; the renamed Compose project starts with fresh `engrave_*`
 volumes and does not implicitly adopt old data.
 
-The literal `SMASH_V2.md` filename remains in source-document links because
-that file is outside the V2 rename boundary.
+Historical roadmap references remain descriptive rather than linked because
+the source material is outside the repository boundary.
 
 ## Consequences
 
