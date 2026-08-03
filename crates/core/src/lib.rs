@@ -24,6 +24,14 @@ pub mod phase_c;
 pub use phase_c::{hex_hash, process_text};
 pub mod memory;
 pub use memory::{AdmissionPolicy, MemoryStore, ProposalInput, ReviewAction, ReviewError};
+pub mod retrieval;
+pub use retrieval::{
+    enforce_benchmark_gate, light_search, ActorRole, AuthorizationContext, BenchmarkCase,
+    BenchmarkGateError, BenchmarkMetrics, BenchmarkThresholds, DegradedMode,
+    DeterministicEmbeddingProvider, EmbeddingProvider, EmbeddingVector, FusionMode, LexicalHit,
+    LexicalIndex, MemoryRecord, ProjectionIdentity, ProjectionStore, ReconciliationReport,
+    RetrievalError, RetrievalPacket, SearchProfile, SearchRequest,
+};
 
 /// Stable machine-readable application error codes. The HTTP mapping belongs
 /// to the API adapter; this enum is transport-independent.
