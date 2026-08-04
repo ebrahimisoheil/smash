@@ -1,0 +1,7 @@
+{
+  "name": "engrave",
+  "version": "0.1.0",
+  "description": "Thin host workflows for governed ENGRAVE Memory.",
+  "author": {"name": "ENGRAVE"},
+  "mcpServers": {"engrave": {"command": "engrave-mcp", "args": []}}
+}

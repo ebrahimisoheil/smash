@@ -41,17 +41,40 @@ pub use cross_map::{
     is_traversable, CrossMapActivity, CrossMapProposalInput, CrossMapReviewAction,
     CrossMapReviewError, CrossMapStore,
 };
+pub mod connector;
+pub use connector::{
+    ConnectorCredentialRef, ConnectorCursor, CredentialStore, ExternalObject, ReadConnector,
+    SourceVersion, SyncBatch, SyncLedger,
+};
 pub mod retrieval;
 pub use retrieval::{
-    enforce_benchmark_gate, expand_cross_map_candidates, light_search, query_embedding_cache_key,
-    retry_directive, ActorRole, AuthorizationContext, BenchmarkCase, BenchmarkGateError,
-    BenchmarkMetrics, BenchmarkThresholds, CircuitBreaker, CircuitState, ConfigurationError,
-    CrossMapExpansionBudget, CrossMapExpansionSource, DegradedMode, DenseHit,
-    DeterministicEmbeddingProvider, EmbeddingConfiguration, EmbeddingProfile, EmbeddingProvider,
-    EmbeddingVector, FusionMode, LexicalHit, LexicalIndex, MemoryRecord, ProjectionAdapter,
-    ProjectionIdentity, ProjectionStore, ProviderError, QueryEmbeddingCache, ReconciliationReport,
-    RetrievalError, RetrievalPacket, RetryDirective, RetryPolicy, SearchProfile, SearchRequest,
-    Visibility, PRODUCTION_OUTPUT_DIMENSION,
+    apply_policy_envelope, enforce_benchmark_gate, expand_cross_map_candidates, light_search,
+    query_embedding_cache_key, rerank_aggressive_hits, retry_directive, ActorRole,
+    AuthorizationContext, BenchmarkCase, BenchmarkGateError, BenchmarkMetrics, BenchmarkThresholds,
+    CircuitBreaker, CircuitState, ConfigurationError, CrossMapExpansionBudget,
+    CrossMapExpansionSource, DegradedMode, DenseHit, DeterministicEmbeddingProvider,
+    EmbeddingConfiguration, EmbeddingProfile, EmbeddingProvider, EmbeddingVector, FusionMode,
+    LexicalHit, LexicalIndex, MemoryRecord, ProjectionAdapter, ProjectionIdentity, ProjectionStore,
+    ProviderError, QueryEmbeddingCache, ReconciliationReport, RetrievalError, RetrievalPacket,
+    RetryDirective, RetryPolicy, SearchProfile, SearchRequest, Visibility,
+    PRODUCTION_OUTPUT_DIMENSION,
+};
+pub mod aggressive;
+pub use aggressive::{
+    decompose_query, detect_contradictions, untrusted_source_warning, AggressiveError,
+    AggressiveIntent, Citation, Contradiction, SearchBudgets, SearchStep, SearchTrace, StepKind,
+    TraceState, Uncertainty,
+};
+pub mod rules;
+pub use rules::{
+    EvaluationPoint, ObjectType, PolicyEnvelope, PreToolGateway, Rule, RuleConditions,
+    RuleDecision, RuleEvaluationError, RuleEvaluator, RuleRequest, RuleScope, ToolCall,
+    POLICY_ENVELOPE_VERSION,
+};
+pub mod fixture;
+pub use fixture::{
+    generate as generate_fixture, BenchmarkMetadata, FixtureConfig, FixtureCorpus, FixtureExpected,
+    FixtureObject,
 };
 
 /// Stable machine-readable application error codes. The HTTP mapping belongs

@@ -1,0 +1,12 @@
+{
+  "fixture": "phase-j-contradiction-corpus-v1",
+  "cases": 4,
+  "contradictory_cases": 3,
+  "light_contradiction_exposures": 0,
+  "aggressive_contradiction_exposures": 3,
+  "light_exposure_rate": 0.0,
+  "aggressive_exposure_rate": 1.0,
+  "unauthorized_result_count": 0,
+  "quality_note": "Credential-free deterministic corpus contract; not a production retrieval-quality claim.",
+  "verification": "cargo test -p engrave-core aggressive::tests::corpus_evaluation_compares_light_and_aggressive_contradiction_quality"
+}

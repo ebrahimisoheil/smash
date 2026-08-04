@@ -9,13 +9,15 @@ use engrave_contracts::{
     ProposalId, Relationship, RelationshipId, SourceState,
 };
 use engrave_core::{
-    bounded_traverse, light_search, ApplicationError, CircuitBreaker, CrossMapProposalInput,
-    CrossMapReviewAction, CrossMapReviewError, CrossMapStore, DegradedMode, DenseHit,
-    DeterministicEmbeddingProvider, EmbeddingConfiguration, EmbeddingProvider, EmbeddingVector,
-    EntityDraftInput, EntityReviewAction, EntityReviewError, EntityStore, GraphBudget,
-    MapDraftInput, MapPublicationPolicy, MapReviewAction, MapReviewError, MapStore, MemoryStore,
-    ProjectionIdentity, ProposalInput, QueryEmbeddingCache, RelationshipDraftInput,
-    RelationshipReviewAction, ReviewAction, SearchProfile, SearchRequest as CoreSearchRequest,
+    apply_policy_envelope, bounded_traverse, light_search, AggressiveIntent, ApplicationError,
+    CircuitBreaker, CrossMapProposalInput, CrossMapReviewAction, CrossMapReviewError,
+    CrossMapStore, DegradedMode, DenseHit, DeterministicEmbeddingProvider, EmbeddingConfiguration,
+    EmbeddingProvider, EmbeddingVector, EntityDraftInput, EntityReviewAction, EntityReviewError,
+    EntityStore, EvaluationPoint, GraphBudget, MapDraftInput, MapPublicationPolicy,
+    MapReviewAction, MapReviewError, MapStore, MemoryStore, ObjectType, ProjectionIdentity,
+    ProposalInput, QueryEmbeddingCache, RelationshipDraftInput, RelationshipReviewAction,
+    ReviewAction, RuleEvaluator, RuleRequest, SearchBudgets, SearchProfile,
+    SearchRequest as CoreSearchRequest,
 };
 use engrave_storage::{
     LanceProjectionAdapter, OpenAiEmbeddingClient, PgRepository, VoyageEmbeddingClient,
@@ -61,6 +63,7 @@ struct AppState {
     /// every single search.
     voyage_client: Option<Arc<VoyageEmbeddingClient>>,
     openai_client: Option<Arc<OpenAiEmbeddingClient>>,
+    rule_evaluator: Arc<Mutex<RuleEvaluator>>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -98,6 +101,13 @@ struct SearchResponse {
     lexical_candidates: usize,
     dense_candidates: usize,
     degraded_mode: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct AggressiveSearchRequest {
+    intent: AggressiveIntent,
+    budgets: SearchBudgets,
+    idempotency_key: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -789,6 +799,75 @@ async fn search(
             engrave_core::ApplicationError::Forbidden => axum::http::StatusCode::FORBIDDEN,
             _ => axum::http::StatusCode::SERVICE_UNAVAILABLE,
         })?;
+    let policy_request = RuleRequest {
+        tenant_id: authorization.tenant_id,
+        environment: "default".into(),
+        actor_id: authorization.actor_id,
+        persona: None,
+        role: Some(format!("{:?}", authorization.role).to_ascii_lowercase()),
+        agent_identity_id: None,
+        area_id: None,
+        purpose: authorization.purpose.clone(),
+        session_id: None,
+        point: EvaluationPoint::BeforeRetrieval,
+        object_type: ObjectType::Memory,
+        object_class: None,
+        memory_type: None,
+        sensitivity: None,
+        lifecycle: None,
+        fields: std::collections::BTreeSet::from([
+            "claim".into(),
+            "reason".into(),
+            "provenance".into(),
+        ]),
+        action: Some("search".into()),
+        connector: None,
+        tool: None,
+        now: OffsetDateTime::now_utc(),
+        permitted_area_ids: authorization.permitted_area_ids.clone(),
+    };
+    let evaluator = if let Some(repository) = &state.repository {
+        RuleEvaluator::new(
+            repository
+                .active_rules(authorization.tenant_id)
+                .await
+                .map_err(|_| axum::http::StatusCode::SERVICE_UNAVAILABLE)?,
+        )
+        .map_err(|_| axum::http::StatusCode::SERVICE_UNAVAILABLE)?
+    } else {
+        state
+            .rule_evaluator
+            .lock()
+            .map_err(|_| axum::http::StatusCode::INTERNAL_SERVER_ERROR)?
+            .clone()
+    };
+    let decision = evaluator
+        .preflight(&policy_request)
+        .map_err(|_| axum::http::StatusCode::FORBIDDEN)?;
+    if let Some(repository) = &state.repository {
+        repository
+            .record_rule_decision(
+                authorization.tenant_id,
+                &decision,
+                "http-search",
+                match decision.effect {
+                    engrave_contracts::RuleEffect::Block => "blocked",
+                    engrave_contracts::RuleEffect::RequireApproval => "approval_required",
+                    _ => "allowed",
+                },
+            )
+            .await
+            .map_err(|_| axum::http::StatusCode::SERVICE_UNAVAILABLE)?;
+    }
+    match decision.effect {
+        engrave_contracts::RuleEffect::Block => return Err(axum::http::StatusCode::FORBIDDEN),
+        engrave_contracts::RuleEffect::RequireApproval => {
+            return Err(axum::http::StatusCode::CONFLICT)
+        }
+        _ => {}
+    }
+    let mut authorization = authorization;
+    apply_policy_envelope(&mut authorization, &decision.envelope);
     let request = CoreSearchRequest {
         authorization,
         query: input.query,
@@ -835,6 +914,139 @@ async fn search(
         dense_candidates: packet.trace.dense_candidates,
         degraded_mode: format!("{:?}", packet.trace.degraded_mode),
     }))
+}
+
+async fn start_aggressive_search(
+    State(state): State<AppState>,
+    Json(input): Json<AggressiveSearchRequest>,
+) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
+    if !input.intent.explicit {
+        return Err(axum::http::StatusCode::BAD_REQUEST);
+    }
+    let repository = state
+        .repository
+        .ok_or(axum::http::StatusCode::SERVICE_UNAVAILABLE)?;
+    let auth = repository
+        .resolve_search_authorization(
+            input.intent.tenant_id,
+            input.intent.actor_id,
+            &[input.intent.area_id.as_uuid()],
+            input.intent.purpose.clone(),
+        )
+        .await
+        .map_err(|_| axum::http::StatusCode::FORBIDDEN)?;
+    if !auth.permitted_area_ids.contains(&input.intent.area_id) {
+        return Err(axum::http::StatusCode::FORBIDDEN);
+    }
+    let evaluator = RuleEvaluator::new(
+        repository
+            .active_rules(input.intent.tenant_id)
+            .await
+            .map_err(|_| axum::http::StatusCode::SERVICE_UNAVAILABLE)?,
+    )
+    .map_err(|_| axum::http::StatusCode::SERVICE_UNAVAILABLE)?;
+    let decision = evaluator
+        .preflight(&RuleRequest {
+            tenant_id: input.intent.tenant_id,
+            environment: "default".into(),
+            actor_id: Some(input.intent.actor_id),
+            persona: None,
+            role: None,
+            agent_identity_id: Some(input.intent.agent_identity_id),
+            area_id: Some(input.intent.area_id),
+            purpose: input.intent.purpose.clone(),
+            session_id: Some(input.intent.session_id),
+            point: EvaluationPoint::BeforeRetrieval,
+            object_type: ObjectType::Memory,
+            object_class: None,
+            memory_type: None,
+            sensitivity: None,
+            lifecycle: None,
+            fields: ["claim".into(), "provenance".into()].into_iter().collect(),
+            action: Some("aggressive_search".into()),
+            connector: None,
+            tool: None,
+            now: OffsetDateTime::now_utc(),
+            permitted_area_ids: auth.permitted_area_ids.clone(),
+        })
+        .map_err(|_| axum::http::StatusCode::FORBIDDEN)?;
+    if !matches!(
+        decision.effect,
+        engrave_contracts::RuleEffect::Allow | engrave_contracts::RuleEffect::Warn
+    ) {
+        return Err(axum::http::StatusCode::FORBIDDEN);
+    }
+    if !decision
+        .envelope
+        .allowed_area_ids
+        .contains(&input.intent.area_id)
+    {
+        return Err(axum::http::StatusCode::FORBIDDEN);
+    }
+    repository
+        .record_rule_decision(
+            input.intent.tenant_id,
+            &decision,
+            "http-aggressive-search",
+            "allowed",
+        )
+        .await
+        .map_err(|_| axum::http::StatusCode::SERVICE_UNAVAILABLE)?;
+    let trace = repository
+        .start_aggressive_search(input.intent, input.budgets, &input.idempotency_key)
+        .await
+        .map_err(|e| match e {
+            ApplicationError::InvalidRequest { .. } => axum::http::StatusCode::BAD_REQUEST,
+            ApplicationError::Forbidden => axum::http::StatusCode::FORBIDDEN,
+            _ => axum::http::StatusCode::SERVICE_UNAVAILABLE,
+        })?;
+    Ok(Json(
+        serde_json::json!({"trace":trace,"state":"queued","background_worker":true}),
+    ))
+}
+
+async fn inspect_aggressive_search(
+    State(state): State<AppState>,
+    Path(operation_id): Path<uuid::Uuid>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
+    let tenant = headers
+        .get("x-tenant-id")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| uuid::Uuid::parse_str(v).ok())
+        .map(engrave_contracts::TenantId::new)
+        .ok_or(axum::http::StatusCode::UNAUTHORIZED)?;
+    let repository = state
+        .repository
+        .ok_or(axum::http::StatusCode::SERVICE_UNAVAILABLE)?;
+    let trace = repository
+        .aggressive_search_trace(tenant, operation_id.into())
+        .await
+        .map_err(|_| axum::http::StatusCode::NOT_FOUND)?;
+    Ok(Json(serde_json::json!({"trace":trace})))
+}
+
+async fn cancel_aggressive_search(
+    State(state): State<AppState>,
+    Path(operation_id): Path<uuid::Uuid>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, axum::http::StatusCode> {
+    let tenant = headers
+        .get("x-tenant-id")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| uuid::Uuid::parse_str(v).ok())
+        .map(engrave_contracts::TenantId::new)
+        .ok_or(axum::http::StatusCode::UNAUTHORIZED)?;
+    let repository = state
+        .repository
+        .ok_or(axum::http::StatusCode::SERVICE_UNAVAILABLE)?;
+    repository
+        .cancel_aggressive_search(tenant, operation_id.into())
+        .await
+        .map_err(|_| axum::http::StatusCode::NOT_FOUND)?;
+    Ok(Json(
+        serde_json::json!({"operation_id":operation_id,"state":"cancellation_requested"}),
+    ))
 }
 
 #[utoipa::path(get, path = "/v1/processing-states", responses((status = 200, body = [ProcessingState])))]
@@ -909,6 +1121,9 @@ fn app_with_retrieval(
         embedding_concurrency: Arc::new(tokio::sync::Semaphore::new(8)),
         voyage_client: VoyageEmbeddingClient::from_env().ok().map(Arc::new),
         openai_client: OpenAiEmbeddingClient::from_env().ok().map(Arc::new),
+        rule_evaluator: Arc::new(Mutex::new(
+            RuleEvaluator::new(Vec::new()).expect("empty evaluator is valid"),
+        )),
     };
     Router::new()
         .route("/v1/health", get(health))
@@ -939,6 +1154,11 @@ fn app_with_retrieval(
             post(review_cross_map_mapping),
         )
         .route("/v1/search", post(search))
+        .route("/v1/aggressive-search", post(start_aggressive_search))
+        .route(
+            "/v1/aggressive-search/{operation_id}",
+            get(inspect_aggressive_search).delete(cancel_aggressive_search),
+        )
         .route(
             "/openapi.json",
             get(|| async { ApiDoc::openapi().to_json().unwrap() }),
@@ -974,8 +1194,10 @@ async fn main() {
         )),
         Err(_) => None,
     };
+    let bind_host = std::env::var("ENGRAVE_API_BIND").unwrap_or_else(|_| "127.0.0.1".into());
     let bind_address = format!(
-        "127.0.0.1:{}",
+        "{}:{}",
+        bind_host,
         std::env::var("ENGRAVE_API_PORT").unwrap_or_else(|_| "3000".into())
     );
     let listener = tokio::net::TcpListener::bind(&bind_address)
@@ -1025,6 +1247,38 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.status(), 200);
+    }
+
+    #[tokio::test]
+    async fn aggressive_search_requires_explicit_intent_before_backend() {
+        let body = serde_json::json!({
+            "intent": {
+                "tenant_id": uuid::Uuid::from_u128(1),
+                "actor_id": uuid::Uuid::from_u128(2),
+                "host_id": "test-host",
+                "agent_identity_id": uuid::Uuid::from_u128(3),
+                "session_id": uuid::Uuid::from_u128(4),
+                "area_id": uuid::Uuid::from_u128(5),
+                "purpose": "verify",
+                "task": "check",
+                "query": "check",
+                "explicit": false
+            },
+            "budgets": {"max_steps": 4, "max_elapsed_ms": 1000, "max_tokens": 100, "max_candidates": 10, "max_external_calls": 0},
+            "idempotency_key": "test-key"
+        });
+        let response = app()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/aggressive-search")
+                    .header("content-type", "application/json")
+                    .body(Body::from(body.to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), axum::http::StatusCode::BAD_REQUEST);
     }
 
     #[test]
@@ -1455,5 +1709,68 @@ mod tests {
         let bounded_packet = body_json(bounded).await;
         assert_eq!(bounded_packet["nodes"].as_array().unwrap().len(), 1);
         assert_eq!(bounded_packet["truncated"], true);
+    }
+
+    #[tokio::test]
+    #[ignore = "requires a disposable migrated PostgreSQL database"]
+    async fn live_http_preflight_loads_active_rule_and_records_block() {
+        let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL is required");
+        let repository = Arc::new(PgRepository::connect(&database_url).await.unwrap());
+        let tenant_id = uuid::Uuid::now_v7();
+        let actor_id = uuid::Uuid::now_v7();
+        let area_id = uuid::Uuid::now_v7();
+        sqlx::query("INSERT INTO tenants (tenant_id, slug, state, created_at, updated_at) VALUES ($1,$2,'active',now(),now())")
+            .bind(tenant_id).bind(format!("api-g-{}", tenant_id)).execute(repository.pool()).await.unwrap();
+        sqlx::query("INSERT INTO actors (actor_id, tenant_id, issuer, subject, state) VALUES ($1,$2,'fixture',$3,'active')")
+            .bind(actor_id).bind(tenant_id).bind(actor_id.to_string()).execute(repository.pool()).await.unwrap();
+        sqlx::query("INSERT INTO areas (area_id, tenant_id, slug, state) VALUES ($1,$2,'private-a','active')")
+            .bind(area_id).bind(tenant_id).execute(repository.pool()).await.unwrap();
+        sqlx::query("INSERT INTO area_grants (area_grant_id, tenant_id, area_id, actor_id, scope, state, effective_from) VALUES ($1,$2,$3,$4,'{}','active',now())")
+            .bind(uuid::Uuid::now_v7()).bind(tenant_id).bind(area_id).bind(actor_id).execute(repository.pool()).await.unwrap();
+        let rule = engrave_core::Rule {
+            id: engrave_contracts::RuleId::new(uuid::Uuid::now_v7()),
+            version_id: engrave_contracts::RuleVersionId::new(uuid::Uuid::now_v7()),
+            version_number: 1,
+            scope: engrave_core::RuleScope {
+                tenant_id: tenant_id.into(),
+                ..Default::default()
+            },
+            conditions: engrave_core::RuleConditions::default(),
+            evaluation_points: std::collections::BTreeSet::from([EvaluationPoint::BeforeRetrieval]),
+            priority: 100,
+            locked: true,
+            effect: engrave_contracts::RuleEffect::Block,
+            rationale: "private Source disclosure is blocked".into(),
+            state: engrave_contracts::RuleState::Draft,
+            effective_from: None,
+            effective_until: None,
+        };
+        repository.create_rule(&rule).await.unwrap();
+        repository
+            .activate_rule(tenant_id.into(), rule.id, 1, "api-rule-activate")
+            .await
+            .unwrap();
+
+        let response = app_with_retrieval(Some(repository.clone()), None)
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/search")
+                    .header("content-type", "application/json")
+                    .header("x-tenant-id", tenant_id.to_string())
+                    .header("x-actor-id", actor_id.to_string())
+                    .header("x-area-ids", area_id.to_string())
+                    .header("x-search-purpose", "read")
+                    .body(Body::from(
+                        serde_json::json!({"query":"private source"}).to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), 403);
+        let recorded: i64 = sqlx::query_scalar("SELECT count(*) FROM rule_decisions WHERE tenant_id = $1 AND rule_id = $2 AND outcome = 'blocked'")
+            .bind(tenant_id).bind(rule.id.as_uuid()).fetch_one(repository.pool()).await.unwrap();
+        assert_eq!(recorded, 1);
     }
 }

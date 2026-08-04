@@ -543,6 +543,35 @@ DATABASE_URL=postgres://engrave_app:engrave_local_only_change_me@localhost:5432/
   scale (beyond the 4,000-memory synthetic dataset used to justify them)
   remains unproven.
 
+## Phase G implementation ledger — 2026-08-03
+
+Implemented the initial Phase G contract slice: declarative typed Rules and
+versioned policy envelopes in core; shared pre-tool gateway; HTTP first-gate
+evaluation and retrieval-scope narrowing; MCP use of the shared evaluator;
+durable Rule/version/test/decision/approval/conflict/review/idempotency schema;
+and a seed-stable, credential-free fixture generator.
+
+Evidence from this checkout:
+
+```text
+cargo fmt --all -- --check                         pass
+cargo test --workspace --locked                    pass (full suite; 75 core tests)
+cargo clippy --workspace --all-targets --locked -- -D warnings  pass
+git diff --check                                   pass
+DATABASE_URL=... cargo test -p engrave-storage --test live_phase_f --locked -- --ignored phase_g_rule_repository_and_decision_are_live --test-threads=1  pass
+DATABASE_URL=... cargo test -p engrave-api --locked -- --ignored live_http_preflight_loads_active_rule_and_records_block --test-threads=1  pass
+docker compose down -v && docker compose up migrate        pass (empty PostgreSQL volume, migrations 001-009)
+npm run build (apps/web)                              pass
+```
+
+The existing Phase E baseline remains documented: MRR/nDCG@10 = 0.6667,
+Recall@20 is not measured, and ranking quality is not a Phase G gate. No ANN
+tuning or production-readiness claim is made. Active Rules now load from
+PostgreSQL at the API retrieval boundary. The core killer-path harness blocks
+retrieval, disclosure, and tool calls mechanically; the live Rule and HTTP
+tests cover activation, active-version loading, idempotent replay, durable
+decision recording, and HTTP blocking before retrieval.
+
 ## Research links
 
 - [OpenAI embeddings guide](https://developers.openai.com/api/docs/guides/embeddings)

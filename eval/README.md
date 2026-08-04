@@ -13,3 +13,9 @@ Area, lifecycle, and applicability exclusions before ranking candidates.
 Phase E metrics are defined in `docs/contracts/retrieval-math.md`: Recall@5/10,
 MRR, nDCG@10, latency percentiles, packet tokens, unauthorized-result rate,
 wrong-Area rate, and visible degraded-mode behavior.
+
+Phase J also records a credential-free Light-vs-Aggressive contradiction corpus
+in `eval/results/phase-j-light-vs-aggressive-2026-08-03.json`. It verifies the
+bounded-mode contract and contradiction-exposure delta only; it is not a
+representative production corpus, and no production retrieval-quality claim
+may be inferred from it.

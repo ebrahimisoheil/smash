@@ -62,6 +62,14 @@ ignore = [
     # reachable vulnerability, just an unmaintained-crate advisory. Revisit
     # when lancedb/datafusion drop it or ship a `pastey` migration.
     "RUSTSEC-2024-0436",
+    # RUSTSEC-2025-0141: bincode 2 is pulled transitively by LanceDB 0.29's
+    # Lindera tokenizer stack. ENGRAVE does not expose bincode as an API or
+    # serialize untrusted input with it; revisit when LanceDB removes it.
+    "RUSTSEC-2025-0141",
+    # RUSTSEC-2021-0153: encoding is pulled transitively by LanceDB 0.29's
+    # Lindera dictionaries. There is no direct workspace dependency; revisit
+    # when the upstream tokenizer stack replaces it.
+    "RUSTSEC-2021-0153",
 ]
 
 # ---------------------------------------------------------------------------

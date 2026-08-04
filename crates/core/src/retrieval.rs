@@ -6,6 +6,7 @@
 #![forbid(unsafe_code)]
 
 use crate::cross_map;
+use crate::rules::PolicyEnvelope;
 use engrave_contracts::{AreaId, CrossMapMapping, CrossMapRelation, MemoryId, TenantId};
 use std::collections::{BTreeMap, BTreeSet};
 use time::OffsetDateTime;
@@ -41,6 +42,14 @@ pub struct AuthorizationContext {
     pub permitted_area_ids: BTreeSet<AreaId>,
     pub role: ActorRole,
     pub purpose: String,
+}
+
+/// Applies the mechanically-produced policy envelope before either dense or
+/// lexical retrieval. Both retrieval paths receive the same narrowed scope.
+pub fn apply_policy_envelope(authorization: &mut AuthorizationContext, envelope: &PolicyEnvelope) {
+    authorization
+        .permitted_area_ids
+        .retain(|area| envelope.allowed_area_ids.contains(area));
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1078,6 +1087,27 @@ pub fn light_search(
     }
 }
 
+/// Deterministic aggressive-mode reranking. Unlike Light Search's fusion
+/// ordering, this gives a small, explainable boost to claims covering more of
+/// the normalized task terms while retaining the original lexical score as
+/// the primary signal.
+pub fn rerank_aggressive_hits(hits: &mut [LexicalHit], query: &str) {
+    let terms: BTreeSet<String> = tokenize(query).into_iter().collect();
+    hits.sort_by(|left, right| {
+        aggressive_rerank_score(right, &terms)
+            .total_cmp(&aggressive_rerank_score(left, &terms))
+            .then_with(|| left.record.memory_id.cmp(&right.record.memory_id))
+    });
+}
+
+fn aggressive_rerank_score(hit: &LexicalHit, terms: &BTreeSet<String>) -> f32 {
+    let covered = tokenize(&hit.record.claim)
+        .into_iter()
+        .filter(|term| terms.contains(term))
+        .count();
+    hit.score + covered as f32 * 0.01
+}
+
 fn estimate_tokens(record: &MemoryRecord) -> usize {
     (record.claim.split_whitespace().count()
         + record.reason.split_whitespace().count()
@@ -1484,6 +1514,27 @@ mod tests {
             .any(|result| !result.warnings.is_empty()));
         assert_eq!(packet.trace.lexical_candidates, 1);
         assert_eq!(packet.trace.dense_candidates, 1);
+    }
+
+    #[test]
+    fn aggressive_rerank_is_deterministic_and_task_term_sensitive() {
+        let (tenant, area, _, first, second, _) = ids();
+        let mut hits = vec![
+            LexicalHit {
+                record: record(tenant, area, first, "renewal"),
+                score: 1.0,
+                rank: 1,
+                reason: "fixture".into(),
+            },
+            LexicalHit {
+                record: record(tenant, area, second, "renewal security review"),
+                score: 0.995,
+                rank: 2,
+                reason: "fixture".into(),
+            },
+        ];
+        rerank_aggressive_hits(&mut hits, "renewal security review");
+        assert_eq!(hits[0].record.memory_id, second);
     }
 
     #[test]

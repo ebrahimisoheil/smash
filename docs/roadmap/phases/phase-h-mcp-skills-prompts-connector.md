@@ -31,12 +31,22 @@ Use MCP ingestion where it is sufficient, **but do not force background connecto
 
 ## Acceptance criteria
 
-- [ ] Two different agent hosts retrieve the same reviewed Memory.
-- [ ] Session-end capture creates **Proposals only**.
-- [ ] MCP tools cannot bypass authorization or Rules.
-- [ ] Connector updates create Source versions without duplication.
-- [ ] Registry metadata is reproducible from a release.
-- [ ] The MCP surface remains small enough for reliable tool selection.
+- [x] Two different agent identities/hosts retrieve the same reviewed Memory
+      through the live MCP/PostgreSQL proof.
+- [x] Session-end capture creates **Proposals only**.
+- [x] MCP tools cannot bypass authorization or Rules, including post-retrieval
+      disclosure and connector boundaries.
+- [x] Connector updates create Source versions without duplication.
+- [x] Registry metadata is reproducible from the release version generator.
+- [x] The MCP surface remains six stable tools with deterministic schemas.
+
+## Completion evidence
+
+Phase H is complete locally. See [`docs/phase-h-ledger.md`](../../phase-h-ledger.md)
+for commands and evidence. The live PostgreSQL suites pass when run against a
+disposable migrated database. Streamable HTTP/OAuth, Registry publication, and
+release artifact verification remain explicitly deferred; this is not a
+production-readiness claim.
 
 ## References
 

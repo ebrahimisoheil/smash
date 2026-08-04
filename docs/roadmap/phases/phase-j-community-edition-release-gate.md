@@ -18,6 +18,15 @@ The Community Edition is ready when a **non-maintainer** can:
 
 — **without repository knowledge.**
 
+The release workflow should also include a guided workspace/ontology
+interview. The agent may elicit the user’s work, stakeholders, Areas, kinds,
+and relationships, then present a structured draft for explicit confirmation.
+The result is a governed Map/Area Proposal or draft only: it must not grant
+Area access or activate a Map without the existing review/admission path.
+Clients may render structured JSON/UI metadata, while CLI clients receive a
+deterministic Markdown/JSON fallback. XML or model-produced markup is not a
+security boundary.
+
 ## Release artifacts
 
 - versioned containers built from the Cargo workspace;

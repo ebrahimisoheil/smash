@@ -4,9 +4,15 @@
 //! Run explicitly against a disposable migrated database with:
 //! `DATABASE_URL=... cargo test -p engrave-storage --test live_phase_f -- --ignored`.
 
-use engrave_contracts::TenantId;
+use engrave_contracts::{RuleEffect, RuleState, TenantId};
+use engrave_core::{
+    EvaluationPoint, ObjectType, Rule, RuleConditions, RuleEvaluator, RuleRequest, RuleScope,
+    POLICY_ENVELOPE_VERSION,
+};
 use engrave_storage::PgRepository;
 use sqlx::Row;
+use std::collections::BTreeSet;
+use time::OffsetDateTime;
 use uuid::Uuid;
 
 async fn seed_tenant(repository: &PgRepository, tenant_id: TenantId, slug: &str) {
@@ -30,6 +36,87 @@ async fn seed_area(repository: &PgRepository, tenant_id: TenantId, area_id: Uuid
     .execute(repository.pool())
     .await
     .unwrap();
+}
+
+#[tokio::test]
+#[ignore = "requires a disposable migrated PostgreSQL database"]
+async fn phase_g_rule_repository_and_decision_are_live() {
+    let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL is required");
+    let repository = PgRepository::connect(&database_url).await.unwrap();
+    let tenant_id = TenantId::new(Uuid::now_v7());
+    seed_tenant(
+        &repository,
+        tenant_id,
+        &format!("rule-g-{}", tenant_id.as_uuid()),
+    )
+    .await;
+    let rule = Rule {
+        id: engrave_contracts::RuleId::new(Uuid::now_v7()),
+        version_id: engrave_contracts::RuleVersionId::new(Uuid::now_v7()),
+        version_number: 1,
+        scope: RuleScope {
+            tenant_id,
+            ..Default::default()
+        },
+        conditions: RuleConditions::default(),
+        evaluation_points: BTreeSet::from([EvaluationPoint::BeforeRetrieval]),
+        priority: 10,
+        locked: true,
+        effect: RuleEffect::Block,
+        rationale: "private fixture disclosure blocked".into(),
+        state: RuleState::Draft,
+        effective_from: None,
+        effective_until: None,
+    };
+    repository.create_rule(&rule).await.unwrap();
+    repository
+        .activate_rule(tenant_id, rule.id, 1, "rule-activate-1")
+        .await
+        .unwrap();
+    let active = repository.active_rules(tenant_id).await.unwrap();
+    assert_eq!(active.len(), 1);
+    assert_eq!(active[0].id, rule.id);
+    assert_eq!(active[0].version_id, rule.version_id);
+    repository
+        .activate_rule(tenant_id, rule.id, 1, "rule-activate-1")
+        .await
+        .unwrap();
+    let request = RuleRequest {
+        tenant_id,
+        environment: "default".into(),
+        actor_id: None,
+        persona: None,
+        role: None,
+        agent_identity_id: None,
+        area_id: None,
+        purpose: "read".into(),
+        session_id: None,
+        point: EvaluationPoint::BeforeRetrieval,
+        object_type: ObjectType::Memory,
+        object_class: None,
+        memory_type: None,
+        sensitivity: None,
+        lifecycle: None,
+        fields: BTreeSet::new(),
+        action: Some("disclose".into()),
+        connector: None,
+        tool: None,
+        now: OffsetDateTime::now_utc(),
+        permitted_area_ids: BTreeSet::new(),
+    };
+    let decision = RuleEvaluator::new(vec![Rule {
+        state: RuleState::Active,
+        ..rule.clone()
+    }])
+    .unwrap()
+    .preflight(&request)
+    .unwrap();
+    assert_eq!(decision.effect, RuleEffect::Block);
+    assert_eq!(decision.envelope.version, POLICY_ENVELOPE_VERSION);
+    repository
+        .record_rule_decision(tenant_id, &decision, "rule-live-1", "blocked")
+        .await
+        .unwrap();
 }
 
 #[tokio::test]

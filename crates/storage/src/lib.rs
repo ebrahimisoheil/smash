@@ -6,19 +6,26 @@
 //! of truth for schema shape.
 #![forbid(unsafe_code)]
 
+pub mod notion;
+pub use notion::NotionConnector;
+
 use arrow_array::{
-    types::Float32Type, Array, FixedSizeListArray, RecordBatch, RecordBatchIterator, StringArray,
-    UInt32Array,
+    types::Float32Type, Array, FixedSizeListArray, RecordBatch, RecordBatchIterator,
+    RecordBatchReader, StringArray, UInt32Array,
 };
 use arrow_schema::{DataType, Field, Schema};
 use async_trait::async_trait;
 use aws_sdk_s3::{primitives::ByteStream, Client as S3Client};
-use engrave_contracts::{AreaId, MemoryId, OperationId, OperationState, TenantId};
+use engrave_contracts::{
+    AreaId, Entity, EntityId, EntityState, MapVersionId, MemoryId, OperationId, OperationState,
+    Origin, Relationship, RelationshipId, RelationshipState, TenantId,
+};
 use engrave_core::{
-    retry_directive, ActorRole, ApplicationError, AuthorizationContext, DenseHit,
-    DeterministicEmbeddingProvider, DomainEvent, EmbeddingProvider, IdempotencyKey, LexicalHit,
-    MemoryRecord, ObjectStore, ProjectionAdapter, ProjectionIdentity, ProviderError, Repository,
-    RetryDirective, RetryPolicy, SearchRequest, VersionToken, Visibility,
+    retry_directive, ActorRole, AggressiveIntent, ApplicationError, AuthorizationContext, Citation,
+    DenseHit, DeterministicEmbeddingProvider, DomainEvent, EmbeddingProvider, IdempotencyKey,
+    LexicalHit, MemoryRecord, ObjectStore, ProjectionAdapter, ProjectionIdentity, ProviderError,
+    Repository, RetryDirective, RetryPolicy, Rule, RuleDecision, SearchBudgets, SearchRequest,
+    SearchTrace, VersionToken, Visibility,
 };
 use futures_util::TryStreamExt;
 use lancedb::query::{ExecutableQuery, QueryBase};
@@ -401,6 +408,18 @@ pub struct DurableLease {
     pub payload: serde_json::Value,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct SourceEvidence {
+    pub citation: Citation,
+    pub content: String,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct AuthorizedGraphSlice {
+    pub entities: Vec<Entity>,
+    pub relationships: Vec<Relationship>,
+}
+
 /// A rebuildable LanceDB row. Canonical claim/lifecycle data stays in
 /// PostgreSQL; these fields exist so authorization can be pushed into the
 /// vector query before any candidate is returned.
@@ -574,9 +593,12 @@ impl LanceProjectionAdapter {
         .map_err(|_| ApplicationError::InvalidRequest {
             message: "invalid LanceDB projection batch".into(),
         })?;
-        let batches = RecordBatchIterator::new(vec![Ok(batch)].into_iter(), schema);
+        let batches: Box<dyn RecordBatchReader + Send> = Box::new(RecordBatchIterator::new(
+            vec![Ok(batch)].into_iter(),
+            schema,
+        ));
         self.db
-            .create_table(&self.table_name, Box::new(batches))
+            .create_table(&self.table_name, batches)
             .mode(lancedb::database::CreateTableMode::Overwrite)
             .execute()
             .await
@@ -751,6 +773,569 @@ impl LanceProjectionAdapter {
 }
 
 impl PgRepository {
+    /// Starts an explicit aggressive investigation. The operation and trace
+    /// are idempotent on the caller's tenant-scoped key.
+    pub async fn start_aggressive_search(
+        &self,
+        intent: AggressiveIntent,
+        budgets: SearchBudgets,
+        idempotency_key: &str,
+    ) -> Result<SearchTrace, ApplicationError> {
+        let trace_id = Uuid::now_v7();
+        let now = time::OffsetDateTime::now_utc();
+        let trace = SearchTrace::start(intent.clone(), budgets, now, trace_id).map_err(|e| {
+            ApplicationError::InvalidRequest {
+                message: e.to_string(),
+            }
+        })?;
+        let payload =
+            serde_json::to_value(&trace).map_err(|_| ApplicationError::InternalUnexpected)?;
+        let operation_id = self
+            .enqueue_operation(
+                intent.tenant_id,
+                trace_id.into(),
+                &serde_json::json!({"kind":"aggressive_search","trace":payload}),
+                "aggressive-search",
+                idempotency_key,
+                3,
+            )
+            .await?;
+        sqlx::query("INSERT INTO search_traces (trace_id,tenant_id,operation_id,actor_id,host_id,agent_identity_id,session_id,area_id,purpose,task,state,descriptor,created_at,updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$13) ON CONFLICT (tenant_id,operation_id) DO NOTHING")
+            .bind(trace_id).bind(intent.tenant_id.as_uuid()).bind(operation_id.as_uuid()).bind(intent.actor_id).bind(&intent.host_id).bind(intent.agent_identity_id.as_uuid()).bind(intent.session_id).bind(intent.area_id.as_uuid()).bind(&intent.purpose).bind(&intent.task).bind("queued").bind(&payload).bind(now)
+            .execute(&self.pool).await.map_err(|_| ApplicationError::DependencyUnavailable { dependency: "postgres" })?;
+        self.aggressive_search_trace(intent.tenant_id, operation_id)
+            .await
+    }
+
+    pub async fn aggressive_search_trace(
+        &self,
+        tenant_id: TenantId,
+        operation_id: OperationId,
+    ) -> Result<SearchTrace, ApplicationError> {
+        let value = sqlx::query_scalar::<_, serde_json::Value>(
+            "SELECT descriptor FROM search_traces WHERE tenant_id=$1 AND operation_id=$2",
+        )
+        .bind(tenant_id.as_uuid())
+        .bind(operation_id.as_uuid())
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|_| ApplicationError::DependencyUnavailable {
+            dependency: "postgres",
+        })?
+        .ok_or(ApplicationError::OperationNotFound)?;
+        serde_json::from_value(value).map_err(|_| ApplicationError::InternalUnexpected)
+    }
+
+    pub async fn persist_aggressive_trace(
+        &self,
+        tenant_id: TenantId,
+        trace: &SearchTrace,
+    ) -> Result<(), ApplicationError> {
+        let descriptor =
+            serde_json::to_value(trace).map_err(|_| ApplicationError::InternalUnexpected)?;
+        let result = sqlx::query("UPDATE search_traces SET state=$3, descriptor=$4, updated_at=$5 WHERE tenant_id=$1 AND trace_id=$2")
+            .bind(tenant_id.as_uuid()).bind(trace.trace_id).bind(format!("{:?}", trace.state).to_ascii_lowercase()).bind(&descriptor).bind(trace.updated_at).execute(&self.pool).await.map_err(|_| ApplicationError::DependencyUnavailable { dependency: "postgres" })?;
+        if result.rows_affected() == 0 {
+            return Err(ApplicationError::OperationNotFound);
+        }
+        for step in &trace.steps {
+            let descriptor =
+                serde_json::to_value(step).map_err(|_| ApplicationError::InternalUnexpected)?;
+            sqlx::query("INSERT INTO search_trace_steps (trace_id,tenant_id,ordinal,kind,area_id,descriptor,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT (trace_id,ordinal) DO UPDATE SET descriptor=EXCLUDED.descriptor")
+                .bind(trace.trace_id).bind(tenant_id.as_uuid()).bind(step.ordinal as i32).bind(format!("{:?}", step.kind).to_ascii_lowercase()).bind(step.area_id.as_uuid()).bind(descriptor).bind(trace.updated_at).execute(&self.pool).await.map_err(|_| ApplicationError::DependencyUnavailable { dependency: "postgres" })?;
+        }
+        Ok(())
+    }
+
+    pub async fn cancel_aggressive_search(
+        &self,
+        tenant_id: TenantId,
+        operation_id: OperationId,
+    ) -> Result<(), ApplicationError> {
+        self.request_operation_cancel(tenant_id, operation_id).await
+    }
+
+    /// Returns only exact evidence links for already-selected Memory. The
+    /// query never searches Source bodies; it follows canonical lineage from
+    /// the selected Memory version to its immutable Source-version/chunk.
+    pub async fn aggressive_source_evidence(
+        &self,
+        tenant_id: TenantId,
+        memory_ids: &[MemoryId],
+    ) -> Result<Vec<SourceEvidence>, ApplicationError> {
+        if memory_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let ids: Vec<Uuid> = memory_ids.iter().map(|id| id.as_uuid()).collect();
+        let rows = sqlx::query(
+            "SELECT mv.memory_id, sv.source_id, el.source_version_id, el.chunk_id, el.coordinate, c.content_hash, c.content FROM evidence_links el JOIN memory_versions mv ON mv.tenant_id=el.tenant_id AND mv.memory_version_id=el.memory_version_id JOIN source_versions sv ON sv.tenant_id=el.tenant_id AND sv.source_version_id=el.source_version_id LEFT JOIN chunks c ON c.tenant_id=el.tenant_id AND c.chunk_id=el.chunk_id WHERE el.tenant_id=$1 AND mv.memory_id=ANY($2) AND el.state IN ('attached','proposed') ORDER BY mv.memory_id, el.source_version_id, el.chunk_id, el.coordinate",
+        )
+        .bind(tenant_id.as_uuid())
+        .bind(&ids)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|_| ApplicationError::DependencyUnavailable { dependency: "postgres" })?;
+        Ok(rows
+            .into_iter()
+            .filter_map(|row| {
+                let source_version_id: Option<Uuid> = row.try_get("source_version_id").ok();
+                let chunk_id: Option<Uuid> = row.try_get("chunk_id").ok();
+                let source_id: Option<Uuid> = row.try_get("source_id").ok();
+                let (Some(source_id), Some(source_version_id), Some(chunk_id)) =
+                    (source_id, source_version_id, chunk_id)
+                else {
+                    return None;
+                };
+                Some(SourceEvidence {
+                    citation: Citation::exact_source(
+                        source_id.into(),
+                        source_version_id.into(),
+                        chunk_id.into(),
+                        row.try_get::<Option<String>, _>("coordinate")
+                            .ok()
+                            .flatten()
+                            .unwrap_or_default(),
+                        row.try_get::<Option<String>, _>("content_hash")
+                            .ok()
+                            .flatten()
+                            .unwrap_or_default(),
+                    ),
+                    content: row
+                        .try_get::<Option<String>, _>("content")
+                        .ok()
+                        .flatten()
+                        .unwrap_or_default(),
+                })
+            })
+            .collect())
+    }
+
+    pub async fn approved_cross_map_targets(
+        &self,
+        tenant_id: TenantId,
+        source_area_id: AreaId,
+        limit: u32,
+    ) -> Result<Vec<AreaId>, ApplicationError> {
+        let rows = sqlx::query(
+            "SELECT target_area_id FROM cross_map_mappings WHERE tenant_id=$1 AND source_area_id=$2 AND state='approved' ORDER BY target_area_id LIMIT $3",
+        )
+        .bind(tenant_id.as_uuid())
+        .bind(source_area_id.as_uuid())
+        .bind(limit.clamp(1, 100) as i64)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|_| ApplicationError::DependencyUnavailable { dependency: "postgres" })?;
+        Ok(rows
+            .into_iter()
+            .map(|row| AreaId::new(row.get("target_area_id")))
+            .collect())
+    }
+
+    /// Loads an already-authorized Area slice for the pure core graph
+    /// traversal. Lifecycle and tenant filters happen before the slice is
+    /// constructed, so the graph function cannot fan out through storage.
+    pub async fn authorized_graph_slice(
+        &self,
+        tenant_id: TenantId,
+        area_ids: &[AreaId],
+        limit: u32,
+    ) -> Result<AuthorizedGraphSlice, ApplicationError> {
+        if area_ids.is_empty() {
+            return Ok(AuthorizedGraphSlice::default());
+        }
+        let ids: Vec<Uuid> = area_ids.iter().map(|id| id.as_uuid()).collect();
+        let max = limit.clamp(1, 500) as i64;
+        let entity_rows = sqlx::query("SELECT entity_id,area_id,map_version_id,kind,state,origin,descriptor,version FROM entities WHERE tenant_id=$1 AND area_id=ANY($2) AND state IN ('active','proposed') ORDER BY entity_id LIMIT $3")
+            .bind(tenant_id.as_uuid()).bind(&ids).bind(max).fetch_all(&self.pool).await
+            .map_err(|_| ApplicationError::DependencyUnavailable { dependency: "postgres" })?;
+        let entities = entity_rows
+            .into_iter()
+            .map(|row| Entity {
+                entity_id: EntityId::new(row.get("entity_id")),
+                tenant_id,
+                area_id: AreaId::new(row.get("area_id")),
+                map_version_id: MapVersionId::new(row.get("map_version_id")),
+                kind: row.get("kind"),
+                state: parse_entity_state(&row.get::<String, _>("state")),
+                origin: parse_origin(&row.get::<String, _>("origin")),
+                descriptor: row.get("descriptor"),
+                version: row.get::<i64, _>("version") as u64,
+            })
+            .collect::<Vec<_>>();
+        let relationship_rows = sqlx::query("SELECT relationship_id,area_id,map_version_id,source_entity_id,target_entity_id,relation_kind,state,origin,version FROM relationships WHERE tenant_id=$1 AND area_id=ANY($2) AND state IN ('active','proposed') ORDER BY relationship_id LIMIT $3")
+            .bind(tenant_id.as_uuid()).bind(&ids).bind((max * 2).min(1000)).fetch_all(&self.pool).await
+            .map_err(|_| ApplicationError::DependencyUnavailable { dependency: "postgres" })?;
+        let relationships = relationship_rows
+            .into_iter()
+            .map(|row| Relationship {
+                relationship_id: RelationshipId::new(row.get("relationship_id")),
+                tenant_id,
+                area_id: AreaId::new(row.get("area_id")),
+                map_version_id: MapVersionId::new(row.get("map_version_id")),
+                source_entity_id: EntityId::new(row.get("source_entity_id")),
+                target_entity_id: EntityId::new(row.get("target_entity_id")),
+                relation_kind: row.get("relation_kind"),
+                state: parse_relationship_state(&row.get::<String, _>("state")),
+                origin: parse_origin(&row.get::<String, _>("origin")),
+                version: row.get::<i64, _>("version") as u64,
+            })
+            .collect();
+        Ok(AuthorizedGraphSlice {
+            entities,
+            relationships,
+        })
+    }
+
+    pub async fn validate_mcp_context(
+        &self,
+        tenant_id: TenantId,
+        actor_id: Uuid,
+        agent_identity_id: engrave_contracts::AgentIdentityId,
+        session_id: Uuid,
+        area_id: AreaId,
+        role: &str,
+    ) -> Result<(), ApplicationError> {
+        let valid = sqlx::query_scalar::<_, bool>(
+            r#"
+            SELECT EXISTS (
+              SELECT 1 FROM actors a
+              JOIN memberships m ON m.tenant_id=a.tenant_id AND m.actor_id=a.actor_id AND m.state='active'
+              JOIN roles r ON r.tenant_id=m.tenant_id AND r.role_id=m.role_id AND r.state='active' AND r.role_key=$6
+              JOIN agent_identities ai ON ai.tenant_id=a.tenant_id AND ai.agent_identity_id=$3 AND ai.state='active'
+              JOIN areas ar ON ar.tenant_id=a.tenant_id AND ar.area_id=$5 AND ar.state='active'
+              JOIN area_grants g ON g.tenant_id=a.tenant_id AND g.area_id=ar.area_id AND g.state='active'
+                AND g.effective_from <= now() AND (g.effective_until IS NULL OR g.effective_until >= now())
+                AND ((g.actor_id=a.actor_id) OR (g.agent_identity_id=ai.agent_identity_id))
+                AND (g.session_id IS NULL OR g.session_id=$4)
+              WHERE a.tenant_id=$1 AND a.actor_id=$2 AND a.state='active'
+            )
+            "#,
+        )
+        .bind(tenant_id.as_uuid()).bind(actor_id).bind(agent_identity_id.as_uuid())
+        .bind(session_id).bind(area_id.as_uuid()).bind(role)
+        .fetch_one(&self.pool).await
+        .map_err(|_| ApplicationError::DependencyUnavailable { dependency: "postgres" })?;
+        if !valid {
+            return Err(ApplicationError::Forbidden);
+        }
+        Ok(())
+    }
+
+    /// Drives the durable Phase J workspace interview. This method only
+    /// creates a Proposal at `submit`; it never grants an Area or publishes a
+    /// Map. The caller must have already passed the MCP Rule gateway.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn workspace_setup(
+        &self,
+        tenant_id: TenantId,
+        actor_id: Uuid,
+        agent_identity_id: engrave_contracts::AgentIdentityId,
+        session_id: Uuid,
+        host_id: &str,
+        purpose: &str,
+        area_id: AreaId,
+        args: &serde_json::Value,
+    ) -> Result<serde_json::Value, ApplicationError> {
+        let action = args
+            .get("action")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| ApplicationError::InvalidRequest {
+                message: "workspace_setup action is required".into(),
+            })?;
+        let idempotency_key = args
+            .get("idempotency_key")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_owned)
+            .unwrap_or_else(|| format!("workspace-setup:{session_id}"));
+        let authorization = self
+            .resolve_search_authorization(tenant_id, actor_id, &[], purpose.to_owned())
+            .await?;
+        let allowed = authorization.permitted_area_ids;
+        let area_options = self.workspace_area_options(tenant_id, &allowed).await?;
+        let selected = args
+            .get("selected_area_ids")
+            .and_then(serde_json::Value::as_array)
+            .cloned()
+            .unwrap_or_else(|| vec![serde_json::json!(area_id.as_uuid())]);
+        let selected_ids = selected
+            .iter()
+            .map(|value| {
+                value
+                    .as_str()
+                    .ok_or_else(|| ApplicationError::InvalidRequest {
+                        message: "selected_area_ids must contain UUID strings".into(),
+                    })
+                    .and_then(|value| {
+                        Uuid::parse_str(value).map_err(|_| ApplicationError::InvalidRequest {
+                            message: "selected_area_ids must contain UUID strings".into(),
+                        })
+                    })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        if selected_ids
+            .iter()
+            .any(|selected| !allowed.contains(&AreaId::new(*selected)))
+        {
+            return Err(ApplicationError::Forbidden);
+        }
+        let requested = args
+            .get("requested_areas")
+            .cloned()
+            .unwrap_or_else(|| serde_json::json!([]));
+        let draft = args
+            .get("ontology_draft")
+            .cloned()
+            .unwrap_or_else(|| serde_json::json!({}));
+
+        if action == "begin" {
+            if let Some(existing) = sqlx::query(
+                "SELECT * FROM workspace_interviews WHERE tenant_id=$1 AND idempotency_key=$2",
+            )
+            .bind(tenant_id.as_uuid())
+            .bind(&idempotency_key)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(|_| ApplicationError::DependencyUnavailable {
+                dependency: "postgres",
+            })? {
+                if existing.get::<Uuid, _>("actor_id") != actor_id
+                    || existing.get::<Uuid, _>("agent_identity_id") != agent_identity_id.as_uuid()
+                    || existing.get::<Uuid, _>("session_id") != session_id
+                {
+                    return Err(ApplicationError::Forbidden);
+                }
+                let mut value = workspace_interview_json(&existing);
+                value["authorized_area_ids"] =
+                    serde_json::json!(allowed.iter().map(|id| id.as_uuid()).collect::<Vec<_>>());
+                value["area_options"] = area_options.clone();
+                value["request_new_area"] = serde_json::json!(true);
+                return Ok(value);
+            }
+            let interview_id = Uuid::now_v7();
+            sqlx::query("INSERT INTO workspace_interviews (interview_id,tenant_id,actor_id,agent_identity_id,session_id,host_id,purpose,state,selected_area_ids,requested_areas,ontology_draft,idempotency_key) VALUES ($1,$2,$3,$4,$5,$6,$7,'collecting',$8,$9,$10,$11)")
+                .bind(interview_id).bind(tenant_id.as_uuid()).bind(actor_id).bind(agent_identity_id.as_uuid()).bind(session_id).bind(host_id).bind(purpose).bind(serde_json::json!(selected_ids)).bind(requested).bind(draft).bind(&idempotency_key)
+                .execute(&self.pool).await.map_err(|_| ApplicationError::DependencyUnavailable { dependency: "postgres" })?;
+            let row = sqlx::query("SELECT * FROM workspace_interviews WHERE interview_id=$1")
+                .bind(interview_id)
+                .fetch_one(&self.pool)
+                .await
+                .map_err(|_| ApplicationError::DependencyUnavailable {
+                    dependency: "postgres",
+                })?;
+            let mut value = workspace_interview_json(&row);
+            value["authorized_area_ids"] =
+                serde_json::json!(allowed.iter().map(|id| id.as_uuid()).collect::<Vec<_>>());
+            value["area_options"] = area_options;
+            value["request_new_area"] = serde_json::json!(true);
+            return Ok(value);
+        }
+
+        let interview_id = Uuid::parse_str(
+            args.get("interview_id")
+                .and_then(serde_json::Value::as_str)
+                .ok_or_else(|| ApplicationError::InvalidRequest {
+                    message: "interview_id is required after begin".into(),
+                })?,
+        )
+        .map_err(|_| ApplicationError::InvalidRequest {
+            message: "interview_id must be a UUID".into(),
+        })?;
+        let row = sqlx::query(
+            "SELECT * FROM workspace_interviews WHERE tenant_id=$1 AND interview_id=$2",
+        )
+        .bind(tenant_id.as_uuid())
+        .bind(interview_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|_| ApplicationError::DependencyUnavailable {
+            dependency: "postgres",
+        })?
+        .ok_or(ApplicationError::Forbidden)?;
+        if row.get::<Uuid, _>("actor_id") != actor_id
+            || row.get::<Uuid, _>("agent_identity_id") != agent_identity_id.as_uuid()
+            || row.get::<Uuid, _>("session_id") != session_id
+        {
+            return Err(ApplicationError::Forbidden);
+        }
+        let state: String = row.get("state");
+        match action {
+            "draft" => {
+                if !matches!(state.as_str(), "collecting" | "awaiting_confirmation") {
+                    return Err(ApplicationError::InvalidRequest {
+                        message: "interview is not accepting a draft".into(),
+                    });
+                }
+                sqlx::query("UPDATE workspace_interviews SET state='awaiting_confirmation',ontology_draft=$3,requested_areas=$4,selected_area_ids=$5,version=version+1,updated_at=now() WHERE tenant_id=$1 AND interview_id=$2")
+                    .bind(tenant_id.as_uuid()).bind(interview_id).bind(draft).bind(requested).bind(serde_json::json!(selected_ids)).execute(&self.pool).await
+                    .map_err(|_| ApplicationError::DependencyUnavailable { dependency: "postgres" })?;
+            }
+            "confirm" => {
+                if state == "confirmed" && row.get::<bool, _>("confirmed") {
+                    return Ok(workspace_interview_json(&row));
+                }
+                if state != "awaiting_confirmation"
+                    || args.get("confirmed").and_then(serde_json::Value::as_bool) != Some(true)
+                {
+                    return Err(ApplicationError::InvalidRequest {
+                        message: "explicit confirmation is required".into(),
+                    });
+                }
+                sqlx::query("UPDATE workspace_interviews SET state='confirmed',confirmed=true,version=version+1,updated_at=now() WHERE tenant_id=$1 AND interview_id=$2")
+                    .bind(tenant_id.as_uuid()).bind(interview_id).execute(&self.pool).await
+                    .map_err(|_| ApplicationError::DependencyUnavailable { dependency: "postgres" })?;
+            }
+            "submit" => {
+                if state == "submitted" {
+                    return Ok(workspace_interview_json(&row));
+                }
+                if state != "confirmed" || !row.get::<bool, _>("confirmed") {
+                    return Err(ApplicationError::InvalidRequest {
+                        message: "interview must be explicitly confirmed before submit".into(),
+                    });
+                }
+                let proposal_id = Uuid::now_v7();
+                let payload = serde_json::json!({"interview_id":interview_id,"ontology_draft":row.get::<serde_json::Value, _>("ontology_draft"),"selected_area_ids":row.get::<serde_json::Value, _>("selected_area_ids"),"requested_areas":row.get::<serde_json::Value, _>("requested_areas"),"actor_id":actor_id,"agent_identity_id":agent_identity_id,"session_id":session_id});
+                let mut tx = self.pool.begin().await.map_err(|_| {
+                    ApplicationError::DependencyUnavailable {
+                        dependency: "postgres",
+                    }
+                })?;
+                let changed = sqlx::query("UPDATE workspace_interviews SET state='submitted',proposal_id=$3,version=version+1,updated_at=now() WHERE tenant_id=$1 AND interview_id=$2 AND state='confirmed' AND confirmed=true")
+                    .bind(tenant_id.as_uuid()).bind(interview_id).bind(proposal_id).execute(&mut *tx).await
+                    .map_err(|_| ApplicationError::DependencyUnavailable { dependency: "postgres" })?;
+                if changed.rows_affected() == 0 {
+                    return Err(ApplicationError::InvalidRequest {
+                        message: "interview was already submitted or changed".into(),
+                    });
+                }
+                sqlx::query("INSERT INTO proposals (proposal_id,tenant_id,area_id,state,origin,kind,payload,version) VALUES ($1,$2,$3,'pending','workspace_setup','map_area', $4, 1)")
+                    .bind(proposal_id).bind(tenant_id.as_uuid()).bind(area_id.as_uuid()).bind(payload).execute(&mut *tx).await
+                    .map_err(|_| ApplicationError::DependencyUnavailable { dependency: "postgres" })?;
+                tx.commit()
+                    .await
+                    .map_err(|_| ApplicationError::DependencyUnavailable {
+                        dependency: "postgres",
+                    })?;
+            }
+            "inspect" => {}
+            "cancel" => {
+                if state == "cancelled" {
+                    return Ok(workspace_interview_json(&row));
+                }
+                if state == "submitted" {
+                    return Err(ApplicationError::InvalidRequest {
+                        message: "interview cannot be cancelled in its current state".into(),
+                    });
+                }
+                sqlx::query("UPDATE workspace_interviews SET state='cancelled',version=version+1,updated_at=now() WHERE tenant_id=$1 AND interview_id=$2")
+                    .bind(tenant_id.as_uuid()).bind(interview_id).execute(&self.pool).await
+                    .map_err(|_| ApplicationError::DependencyUnavailable { dependency: "postgres" })?;
+            }
+            _ => {
+                return Err(ApplicationError::InvalidRequest {
+                    message: "action must be begin, draft, confirm, submit, inspect, or cancel"
+                        .into(),
+                })
+            }
+        }
+        let updated = sqlx::query(
+            "SELECT * FROM workspace_interviews WHERE tenant_id=$1 AND interview_id=$2",
+        )
+        .bind(tenant_id.as_uuid())
+        .bind(interview_id)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|_| ApplicationError::DependencyUnavailable {
+            dependency: "postgres",
+        })?;
+        let mut value = workspace_interview_json(&updated);
+        value["authorized_area_ids"] =
+            serde_json::json!(allowed.iter().map(|id| id.as_uuid()).collect::<Vec<_>>());
+        value["area_options"] = area_options;
+        value["request_new_area"] = serde_json::json!(true);
+        Ok(value)
+    }
+
+    async fn workspace_area_options(
+        &self,
+        tenant_id: TenantId,
+        allowed: &std::collections::BTreeSet<AreaId>,
+    ) -> Result<serde_json::Value, ApplicationError> {
+        let ids: Vec<Uuid> = allowed.iter().map(|id| id.as_uuid()).collect();
+        let rows = sqlx::query(
+            "SELECT area_id, slug FROM areas WHERE tenant_id=$1 AND state='active' AND area_id=ANY($2) ORDER BY slug, area_id",
+        )
+        .bind(tenant_id.as_uuid())
+        .bind(ids)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|_| ApplicationError::DependencyUnavailable { dependency: "postgres" })?;
+        Ok(serde_json::Value::Array(
+            rows.into_iter()
+                .map(|row| {
+                    serde_json::json!({
+                        "area_id": row.get::<Uuid, _>("area_id"),
+                        "label": row.get::<String, _>("slug"),
+                    })
+                })
+                .collect(),
+        ))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn queue_connector_source(
+        &self,
+        tenant_id: TenantId,
+        area_id: AreaId,
+        connector: &str,
+        external_id: &str,
+        title: &str,
+        content: &str,
+        permissions: &serde_json::Value,
+        idempotency_key: &str,
+    ) -> Result<OperationId, ApplicationError> {
+        let source_id = Uuid::now_v7();
+        let source_version_id = Uuid::now_v7();
+        let checksum = format!("sha256:{:x}", Sha256::digest(content.as_bytes()));
+        let mut tx =
+            self.pool
+                .begin()
+                .await
+                .map_err(|_| ApplicationError::DependencyUnavailable {
+                    dependency: "postgres",
+                })?;
+        let source_id = sqlx::query_scalar::<_, Uuid>(
+            r#"
+            INSERT INTO sources (source_id, tenant_id, area_id, state, title, created_at, updated_at, connector_name, external_id, connector_permissions)
+            VALUES ($1,$2,$3,'queued',$4,now(),now(),$5,$6,$7)
+            ON CONFLICT (tenant_id, connector_name, external_id) WHERE connector_name IS NOT NULL AND external_id IS NOT NULL
+            DO UPDATE SET title=EXCLUDED.title, area_id=EXCLUDED.area_id, connector_permissions=EXCLUDED.connector_permissions, updated_at=now()
+            RETURNING source_id
+            "#
+        ).bind(source_id).bind(tenant_id.as_uuid()).bind(area_id.as_uuid()).bind(title).bind(connector).bind(external_id).bind(permissions)
+        .fetch_one(&mut *tx).await.map_err(|_| ApplicationError::DependencyUnavailable { dependency: "postgres" })?;
+        let next_version = sqlx::query_scalar::<_, i64>("SELECT COALESCE(max(version_number),0)+1 FROM source_versions WHERE tenant_id=$1 AND source_id=$2 AND checksum <> $3")
+            .bind(tenant_id.as_uuid()).bind(source_id).bind(&checksum).fetch_one(&mut *tx).await
+            .map_err(|_| ApplicationError::DependencyUnavailable { dependency: "postgres" })?;
+        let existing = sqlx::query_scalar::<_, Uuid>("SELECT source_version_id FROM source_versions WHERE tenant_id=$1 AND source_id=$2 AND checksum=$3")
+            .bind(tenant_id.as_uuid()).bind(source_id).bind(&checksum).fetch_optional(&mut *tx).await
+            .map_err(|_| ApplicationError::DependencyUnavailable { dependency: "postgres" })?;
+        let source_version_id = if let Some(existing) = existing {
+            existing
+        } else {
+            sqlx::query("UPDATE source_versions SET state='superseded' WHERE tenant_id=$1 AND source_id=$2 AND state='current'").bind(tenant_id.as_uuid()).bind(source_id).execute(&mut *tx).await.map_err(|_| ApplicationError::DependencyUnavailable { dependency: "postgres" })?;
+            sqlx::query("INSERT INTO source_versions (source_version_id,tenant_id,source_id,version_number,state,object_key,media_type,byte_size,checksum,created_at) VALUES ($1,$2,$3,$4,'current',$5,'text/plain',$6,$7,now())")
+                .bind(source_version_id).bind(tenant_id.as_uuid()).bind(source_id).bind(next_version).bind(format!("tenants/{}/sources/{source_id}/connector/{external_id}/{next_version}", tenant_id.as_uuid())).bind(content.len() as i64).bind(&checksum).execute(&mut *tx).await.map_err(|_| ApplicationError::DependencyUnavailable { dependency: "postgres" })?;
+            source_version_id
+        };
+        tx.commit()
+            .await
+            .map_err(|_| ApplicationError::DependencyUnavailable {
+                dependency: "postgres",
+            })?;
+        let operation_id = OperationId::new_v7();
+        self.enqueue_operation(tenant_id, operation_id, &serde_json::json!({"kind":"connector_ingest","connector":connector,"external_id":external_id,"source_id":source_id,"source_version_id":source_version_id,"content":content,"title":title}), "connector-ingest", idempotency_key, 5).await
+    }
     pub async fn connect(database_url: &str) -> Result<Self, ApplicationError> {
         let pool = PgPoolOptions::new()
             .max_connections(10)
@@ -778,6 +1363,174 @@ impl PgRepository {
 
     pub fn pool(&self) -> &PgPool {
         &self.pool
+    }
+
+    /// Persists a draft Rule and its immutable version. Activation is a
+    /// separate, admission-gated operation so a test harness can run first.
+    pub async fn create_rule(&self, rule: &Rule) -> Result<(), ApplicationError> {
+        let mut tx =
+            self.pool
+                .begin()
+                .await
+                .map_err(|_| ApplicationError::DependencyUnavailable {
+                    dependency: "postgres",
+                })?;
+        sqlx::query("INSERT INTO rules (rule_id, tenant_id, area_id, state, environment, owner_actor_id) VALUES ($1,$2,$3,$4,$5,$6)")
+            .bind(rule.id.as_uuid()).bind(rule.scope.tenant_id.as_uuid())
+            .bind(rule.scope.area_ids.iter().next().map(|id| id.as_uuid()))
+            .bind(match rule.state { engrave_contracts::RuleState::Draft => "draft", engrave_contracts::RuleState::Active => "active", engrave_contracts::RuleState::Superseded => "superseded", engrave_contracts::RuleState::Disabled => "disabled" })
+            .bind(rule.scope.environment.as_deref().unwrap_or("default"))
+            .bind(rule.scope.actor_ids.iter().next())
+            .execute(&mut *tx).await.map_err(|_| ApplicationError::DependencyUnavailable { dependency: "postgres" })?;
+        sqlx::query("INSERT INTO rule_versions (rule_version_id, tenant_id, rule_id, version_number, effect, condition, rationale, scope, evaluation_points, priority, locked, effective_from, effective_until) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)")
+            .bind(rule.version_id.as_uuid()).bind(rule.scope.tenant_id.as_uuid()).bind(rule.id.as_uuid()).bind(rule.version_number as i64)
+            .bind(match rule.effect { engrave_contracts::RuleEffect::Allow => "allow", engrave_contracts::RuleEffect::Warn => "warn", engrave_contracts::RuleEffect::RequireApproval => "require_approval", engrave_contracts::RuleEffect::Block => "block" })
+            .bind(serde_json::to_value(&rule.conditions).unwrap_or_default()).bind(&rule.rationale).bind(serde_json::to_value(&rule.scope).unwrap_or_default()).bind(serde_json::to_value(&rule.evaluation_points).unwrap_or_default()).bind(rule.priority).bind(rule.locked).bind(rule.effective_from).bind(rule.effective_until)
+            .execute(&mut *tx).await.map_err(|_| ApplicationError::DependencyUnavailable { dependency: "postgres" })?;
+        sqlx::query(
+            "UPDATE rules SET current_version_id = $1 WHERE tenant_id = $2 AND rule_id = $3",
+        )
+        .bind(rule.version_id.as_uuid())
+        .bind(rule.scope.tenant_id.as_uuid())
+        .bind(rule.id.as_uuid())
+        .execute(&mut *tx)
+        .await
+        .map_err(|_| ApplicationError::DependencyUnavailable {
+            dependency: "postgres",
+        })?;
+        tx.commit()
+            .await
+            .map_err(|_| ApplicationError::DependencyUnavailable {
+                dependency: "postgres",
+            })
+    }
+
+    pub async fn activate_rule(
+        &self,
+        tenant_id: TenantId,
+        rule_id: engrave_contracts::RuleId,
+        expected_version: u64,
+        idempotency_key: &str,
+    ) -> Result<(), ApplicationError> {
+        let mut tx =
+            self.pool
+                .begin()
+                .await
+                .map_err(|_| ApplicationError::DependencyUnavailable {
+                    dependency: "postgres",
+                })?;
+        let replay = sqlx::query_scalar::<_, String>("SELECT request_hash FROM idempotency_keys WHERE tenant_id = $1 AND scope = 'rule-activation' AND key = $2")
+            .bind(tenant_id.as_uuid()).bind(idempotency_key).fetch_optional(&mut *tx).await
+            .map_err(|_| ApplicationError::DependencyUnavailable { dependency: "postgres" })?;
+        if replay.is_some() {
+            return Ok(());
+        }
+        sqlx::query("INSERT INTO idempotency_keys (tenant_id, scope, key, request_hash, created_at) VALUES ($1,'rule-activation',$2,$3,now())")
+            .bind(tenant_id.as_uuid()).bind(idempotency_key).bind(rule_id.as_uuid().to_string()).execute(&mut *tx).await
+            .map_err(|_| ApplicationError::DependencyUnavailable { dependency: "postgres" })?;
+        let bumped = sqlx::query("UPDATE rules SET version = version + 1 WHERE tenant_id = $1 AND rule_id = $2 AND version = $3 AND state = 'draft'")
+            .bind(tenant_id.as_uuid()).bind(rule_id.as_uuid()).bind(expected_version as i64).execute(&mut *tx).await
+            .map_err(|_| ApplicationError::DependencyUnavailable { dependency: "postgres" })?;
+        if bumped.rows_affected() == 0 {
+            return Err(ApplicationError::VersionConflict {
+                resource: "rule",
+                current_version: expected_version,
+            });
+        }
+        sqlx::query("SELECT set_config('app.rule_admission', 'approved', true)")
+            .execute(&mut *tx)
+            .await
+            .map_err(|_| ApplicationError::DependencyUnavailable {
+                dependency: "postgres",
+            })?;
+        sqlx::query("UPDATE rules SET state = 'active' WHERE tenant_id = $1 AND rule_id = $2 AND state = 'draft'").bind(tenant_id.as_uuid()).bind(rule_id.as_uuid()).execute(&mut *tx).await.map_err(|_| ApplicationError::DependencyUnavailable { dependency: "postgres" })?;
+        tx.commit()
+            .await
+            .map_err(|_| ApplicationError::DependencyUnavailable {
+                dependency: "postgres",
+            })
+    }
+
+    /// Loads the active immutable versions for one tenant. The API performs
+    /// this at the authorization boundary on every request so a Rule change
+    /// cannot remain resident in a process-local cache past its admission.
+    pub async fn active_rules(&self, tenant_id: TenantId) -> Result<Vec<Rule>, ApplicationError> {
+        let rows = sqlx::query("SELECT r.rule_id, r.environment, rv.rule_version_id, rv.version_number, rv.effect, rv.condition, rv.rationale, rv.scope, rv.evaluation_points, rv.priority, rv.locked, rv.effective_from, rv.effective_until FROM rules r JOIN rule_versions rv ON rv.rule_version_id = r.current_version_id AND rv.tenant_id = r.tenant_id WHERE r.tenant_id = $1 AND r.state = 'active'")
+            .bind(tenant_id.as_uuid()).fetch_all(&self.pool).await
+            .map_err(|_| ApplicationError::DependencyUnavailable { dependency: "postgres" })?;
+        rows.into_iter()
+            .map(|row| {
+                let mut scope: engrave_core::RuleScope = serde_json::from_value(row.get("scope"))
+                    .map_err(|_| {
+                    ApplicationError::InvalidRequest {
+                        message: "stored Rule scope is invalid".into(),
+                    }
+                })?;
+                scope.tenant_id = tenant_id;
+                scope.environment = Some(row.get::<String, _>("environment"));
+                Ok(Rule {
+                    id: engrave_contracts::RuleId::new(row.get("rule_id")),
+                    version_id: engrave_contracts::RuleVersionId::new(row.get("rule_version_id")),
+                    version_number: row.get::<i64, _>("version_number") as u64,
+                    scope,
+                    conditions: serde_json::from_value(row.get("condition")).map_err(|_| {
+                        ApplicationError::InvalidRequest {
+                            message: "stored Rule conditions are invalid".into(),
+                        }
+                    })?,
+                    evaluation_points: serde_json::from_value(row.get("evaluation_points"))
+                        .map_err(|_| ApplicationError::InvalidRequest {
+                            message: "stored Rule evaluation points are invalid".into(),
+                        })?,
+                    priority: row.get("priority"),
+                    locked: row.get("locked"),
+                    effect: serde_json::from_value(serde_json::Value::String(row.get("effect")))
+                        .map_err(|_| ApplicationError::InvalidRequest {
+                            message: "stored Rule effect is invalid".into(),
+                        })?,
+                    rationale: row.get("rationale"),
+                    state: engrave_contracts::RuleState::Active,
+                    effective_from: row.get("effective_from"),
+                    effective_until: row.get("effective_until"),
+                })
+            })
+            .collect()
+    }
+
+    pub async fn record_rule_decision(
+        &self,
+        tenant_id: TenantId,
+        decision: &RuleDecision,
+        request_id: &str,
+        outcome: &str,
+    ) -> Result<(), ApplicationError> {
+        sqlx::query("INSERT INTO rule_decisions (rule_decision_id, tenant_id, rule_id, rule_version_id, actor_id, area_id, purpose, evaluation_point, effect, rationale, next_action, envelope, outcome, request_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)")
+            .bind(Uuid::now_v7()).bind(tenant_id.as_uuid()).bind((decision.rule_id.as_uuid() != Uuid::nil()).then_some(decision.rule_id.as_uuid())).bind((decision.rule_version.as_uuid() != Uuid::nil()).then_some(decision.rule_version.as_uuid())).bind(decision.actor_id).bind(decision.envelope.allowed_area_ids.iter().next().map(|id| id.as_uuid())).bind(&decision.purpose).bind(format!("{:?}", decision.evaluation_point).to_ascii_lowercase()).bind(format!("{:?}", decision.effect).to_ascii_lowercase()).bind(&decision.rationale).bind(&decision.next_action).bind(serde_json::to_value(&decision.envelope).unwrap_or_default()).bind(outcome).bind(request_id)
+            .execute(&self.pool).await.map_err(|_| ApplicationError::DependencyUnavailable { dependency: "postgres" })?;
+        Ok(())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub async fn record_mcp_decision(
+        &self,
+        tenant_id: TenantId,
+        actor_id: Uuid,
+        host_id: &str,
+        agent_identity_id: engrave_contracts::AgentIdentityId,
+        session_id: Uuid,
+        area_id: AreaId,
+        decision: &RuleDecision,
+        outcome: &str,
+        argument_hash: &str,
+    ) -> Result<(), ApplicationError> {
+        sqlx::query("INSERT INTO rule_decisions (rule_decision_id,tenant_id,rule_id,rule_version_id,actor_id,host_id,agent_identity_id,session_id,area_id,purpose,evaluation_point,effect,rationale,next_action,envelope,outcome,request_id,idempotency_key) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)")
+            .bind(Uuid::now_v7()).bind(tenant_id.as_uuid()).bind((decision.rule_id.as_uuid() != Uuid::nil()).then_some(decision.rule_id.as_uuid())).bind((decision.rule_version.as_uuid() != Uuid::nil()).then_some(decision.rule_version.as_uuid()))
+            .bind(actor_id).bind(host_id).bind(agent_identity_id.as_uuid()).bind(session_id).bind(area_id.as_uuid()).bind(&decision.purpose)
+            .bind(format!("{:?}", decision.evaluation_point).to_ascii_lowercase())
+            .bind(format!("{:?}", decision.effect).to_ascii_lowercase()).bind(&decision.rationale).bind(&decision.next_action)
+            .bind(serde_json::json!({"policy":decision.envelope,"argument_hash":argument_hash})).bind(outcome).bind(session_id.to_string()).bind(argument_hash)
+            .execute(&self.pool).await.map_err(|_| ApplicationError::DependencyUnavailable { dependency: "postgres" })?;
+        Ok(())
     }
 
     /// Resolves retrieval scope from canonical tenant membership and Area
@@ -1309,6 +2062,38 @@ impl PgRepository {
                 dependency: "postgres",
             })?;
         Ok(memory_id)
+    }
+
+    pub async fn reject_memory_proposal(
+        &self,
+        tenant_id: TenantId,
+        proposal_id: Uuid,
+        reviewer_id: Uuid,
+        expected_version: i64,
+        idempotency_key: &str,
+        reason: &str,
+    ) -> Result<(), ApplicationError> {
+        let mut tx =
+            self.pool
+                .begin()
+                .await
+                .map_err(|_| ApplicationError::DependencyUnavailable {
+                    dependency: "postgres",
+                })?;
+        if sqlx::query_scalar::<_, bool>("SELECT EXISTS (SELECT 1 FROM memory_review_operations WHERE tenant_id=$1 AND proposal_id=$2 AND idempotency_key=$3)").bind(tenant_id.as_uuid()).bind(proposal_id).bind(idempotency_key).fetch_one(&mut *tx).await.map_err(|_| ApplicationError::DependencyUnavailable { dependency: "postgres" })? { return Ok(()); }
+        let changed = sqlx::query("UPDATE proposals SET state='rejected', rejection_reason=$4, version=version+1 WHERE tenant_id=$1 AND proposal_id=$2 AND version=$3 AND state='pending'").bind(tenant_id.as_uuid()).bind(proposal_id).bind(expected_version).bind(reason).execute(&mut *tx).await.map_err(|_| ApplicationError::DependencyUnavailable { dependency: "postgres" })?;
+        if changed.rows_affected() == 0 {
+            return Err(ApplicationError::VersionConflict {
+                resource: "proposal",
+                current_version: (expected_version + 1).max(0) as u64,
+            });
+        }
+        sqlx::query("INSERT INTO memory_review_operations (tenant_id,proposal_id,idempotency_key,request_hash,response,created_at) VALUES ($1,$2,$3,$4,$5,now())").bind(tenant_id.as_uuid()).bind(proposal_id).bind(idempotency_key).bind(format!("reject:{reviewer_id}:{reason}")).bind(serde_json::json!({"state":"rejected","reviewer_id":reviewer_id})).execute(&mut *tx).await.map_err(|_| ApplicationError::DependencyUnavailable { dependency: "postgres" })?;
+        tx.commit()
+            .await
+            .map_err(|_| ApplicationError::DependencyUnavailable {
+                dependency: "postgres",
+            })
     }
 
     /// Creates a Map draft. Mirrors `create_memory_proposal`: a plain
@@ -2058,6 +2843,49 @@ impl PgRepository {
         }
         Ok(())
     }
+}
+
+fn parse_entity_state(value: &str) -> EntityState {
+    match value {
+        "proposed" => EntityState::Proposed,
+        "merged" => EntityState::Merged,
+        "retired" => EntityState::Retired,
+        _ => EntityState::Active,
+    }
+}
+
+fn parse_relationship_state(value: &str) -> RelationshipState {
+    match value {
+        "proposed" => RelationshipState::Proposed,
+        "superseded" => RelationshipState::Superseded,
+        "rejected" => RelationshipState::Rejected,
+        "retired" => RelationshipState::Retired,
+        _ => RelationshipState::Active,
+    }
+}
+
+fn parse_origin(value: &str) -> Origin {
+    match value {
+        "observed" => Origin::Observed,
+        "inferred" => Origin::Inferred,
+        "approved" => Origin::Approved,
+        _ => Origin::Proposed,
+    }
+}
+
+fn workspace_interview_json(row: &sqlx::postgres::PgRow) -> serde_json::Value {
+    serde_json::json!({
+        "interview_id": row.get::<Uuid, _>("interview_id"),
+        "tenant_id": row.get::<Uuid, _>("tenant_id"),
+        "state": row.get::<String, _>("state"),
+        "selected_area_ids": row.get::<serde_json::Value, _>("selected_area_ids"),
+        "requested_areas": row.get::<serde_json::Value, _>("requested_areas"),
+        "ontology_draft": row.get::<serde_json::Value, _>("ontology_draft"),
+        "confirmed": row.get::<bool, _>("confirmed"),
+        "proposal_id": row.try_get::<Uuid, _>("proposal_id").ok(),
+        "version": row.get::<i64, _>("version"),
+        "content": format!("# Workspace setup\nState: {}\nInterview: {}\nSubmission creates a proposal only; Area access and Map publication remain separately governed.", row.get::<String, _>("state"), row.get::<Uuid, _>("interview_id")),
+    })
 }
 
 #[async_trait]

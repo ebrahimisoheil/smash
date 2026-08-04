@@ -37,6 +37,13 @@ The backend stack in one line:
 
 Skills, prompts, MCP, connectors, and agent-host integrations sit on top of this foundation.
 
+For a local Community Edition install, start with
+[`docs/community-edition.md`](docs/community-edition.md); it documents the
+Compose boundary, configuration, backup/restore, upgrades, MCP artifacts, and
+known limits.
+
+For development and release review, see [`CONTRIBUTING.md`](CONTRIBUTING.md).
+
 ## Where the plan lives
 
 All planning, philosophy, architecture, and phase documentation lives in [`docs/roadmap/`](docs/roadmap/README.md).

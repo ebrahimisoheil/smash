@@ -5,6 +5,7 @@
 #![forbid(unsafe_code)]
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use time::OffsetDateTime;
 use utoipa::ToSchema;
 use uuid::Uuid;
@@ -488,6 +489,82 @@ pub struct ProposalSummary {
     pub origin: Origin,
     pub rejection_reason: Option<String>,
     pub version: u64,
+}
+
+/// Wire-level vocabulary for the governed workspace interview. The draft is
+/// intentionally open for ontology-specific relationship/evidence shapes, but
+/// the surrounding envelope is validated deterministically at the MCP edge.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkspaceSetupAction {
+    Begin,
+    Draft,
+    Confirm,
+    Submit,
+    Inspect,
+    Cancel,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkspaceInterviewState {
+    Started,
+    Collecting,
+    DraftReady,
+    AwaitingConfirmation,
+    Submitted,
+    Cancelled,
+}
+
+/// Validates only shape and replay-critical fields. Authorization, active
+/// Rules, and Area envelopes remain server-side concerns.
+pub fn validate_workspace_setup_args(args: &Value) -> Result<(), String> {
+    let action = args
+        .get("action")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "workspace_setup action is required".to_string())?;
+    if !matches!(
+        action,
+        "begin" | "draft" | "confirm" | "submit" | "inspect" | "cancel"
+    ) {
+        return Err("action must be begin, draft, confirm, submit, inspect, or cancel".into());
+    }
+    if action != "begin" && args.get("interview_id").and_then(Value::as_str).is_none() {
+        return Err("interview_id is required after begin".into());
+    }
+    if let Some(areas) = args.get("selected_area_ids") {
+        let values = areas
+            .as_array()
+            .ok_or_else(|| "selected_area_ids must be an array".to_string())?;
+        for value in values {
+            let id = value
+                .as_str()
+                .ok_or_else(|| "selected_area_ids must contain UUID strings".to_string())?;
+            uuid::Uuid::parse_str(id)
+                .map_err(|_| "selected_area_ids must contain UUID strings".to_string())?;
+        }
+    }
+    if let Some(draft) = args.get("ontology_draft") {
+        let object = draft
+            .as_object()
+            .ok_or_else(|| "ontology_draft must be an object".to_string())?;
+        for field in [
+            "kinds",
+            "relationships",
+            "assumptions",
+            "unresolved_questions",
+        ] {
+            if let Some(value) = object.get(field) {
+                if !value.is_array() {
+                    return Err(format!("ontology_draft.{field} must be an array"));
+                }
+            }
+        }
+    }
+    if action == "confirm" && args.get("confirmed").and_then(Value::as_bool) != Some(true) {
+        return Err("explicit confirmation is required".into());
+    }
+    Ok(())
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, ToSchema)]

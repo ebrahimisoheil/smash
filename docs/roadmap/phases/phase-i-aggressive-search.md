@@ -35,6 +35,28 @@ It creates optional Proposals, **never active Memory**.
 - [ ] Contradiction cases improve over Light search on the evaluation set.
 - [ ] **No aggressive-search result changes Memory without review.**
 
+## Carried gaps and release boundary
+
+The bounded implementation and contract-level evidence are complete locally.
+The following items remain explicit follow-up work and must not be silently
+converted into a production-readiness claim:
+
+- A corpus-level Light-vs-Aggressive evaluation is still required. The current
+  deterministic fixture proves contradiction exposure for one opposing-claim
+  case, not general retrieval quality or a benchmark-wide improvement.
+- A live worker test must mutate active authorization between stages and prove
+  that a later retrieval, traversal, Source inspection, connector call, or
+  disclosure observes the narrowed Rule state.
+- The live worker pipeline should include an approved Cross-Map mapping and a
+  graph fixture, so `Traverse` is proven in the worker path rather than only by
+  core/storage graph tests.
+- Connector-backed external calls, OAuth, remote MCP, Registry publication,
+  artifact verification, and release security review remain outside Phase I.
+
+Phase J may consume these as release-gate inputs, but it must first preserve
+the distinction between locally verified implementation, deferred evidence,
+and production/release readiness.
+
 ## References
 
 - [09 — Retrieval architecture §9.3 Aggressive search](../09-retrieval-architecture.md#93-aggressive-search)

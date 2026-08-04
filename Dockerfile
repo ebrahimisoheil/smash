@@ -48,6 +48,12 @@ FROM chef AS builder
 COPY --from=planner /app/recipe.json recipe.json
 # Builds and caches every workspace dependency — this layer is reused across
 # builds as long as Cargo.toml/Cargo.lock don't change.
+# Container images use a reproducible, non-LTO release profile with multiple
+# codegen units. The host release artifact still uses the workspace's thin-LTO
+# profile; disabling LTO here keeps a clean-machine install rehearsal bounded
+# without changing the runtime API or the source-level release checks.
+ENV CARGO_PROFILE_RELEASE_LTO=false \
+    CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16
 RUN cargo chef cook --release --recipe-path recipe.json
 COPY . .
 ENV SQLX_OFFLINE=true
